@@ -1,0 +1,22 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine
+
+WORKDIR /build
+
+# Create directory structure for NuGet restore caching
+RUN mkdir -p .github/ci/stubs/Assembly-CSharp \
+    && mkdir -p .github/ci/stubs/Rewired_Core
+
+# Copy project files for NuGet restore (cached layer)
+COPY .github/ci/NuGet.config .github/ci/
+COPY .github/ci/NOAutopilot.CI.csproj .github/ci/
+COPY .github/ci/stubs/Stubs.props .github/ci/stubs/
+COPY .github/ci/stubs/Assembly-CSharp/Assembly-CSharp.csproj .github/ci/stubs/Assembly-CSharp/
+COPY .github/ci/stubs/Rewired_Core/Rewired_Core.csproj .github/ci/stubs/Rewired_Core/
+
+RUN dotnet restore .github/ci/NOAutopilot.CI.csproj
+
+# Copy source and stubs (changes here don't bust restore cache)
+COPY src/ src/
+COPY .github/ci/stubs/ .github/ci/stubs/
+
+RUN dotnet build .github/ci/NOAutopilot.CI.csproj -c Release --no-restore

@@ -1,0 +1,11 @@
+<Project>
+  <!-- Game-specific stubs (minimal signatures, no proprietary code) -->
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Assembly-CSharp\Assembly-CSharp.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Rewired_Core\Rewired_Core.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+</Project>

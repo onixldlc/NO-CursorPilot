@@ -1,0 +1,94 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Optional version override (e.g. 1.2.3). Leave empty to auto-detect'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Mark as pre-release?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build stubs
+        run: |
+          for proj in .github/ci/stubs/*/; do
+            name=$(basename "$proj")
+            echo "::group::Building $name stub"
+            dotnet build "$proj$name.csproj" -c Release --configfile .github/ci/NuGet.config
+            echo "::endgroup::"
+          done
+
+      - name: Detect version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version_override }}" ]; then
+              VER="${{ github.event.inputs.version_override }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+              VER="${{ github.ref_name }}"
+              VER="${VER#v}"
+          else
+              VER=$(grep -oP '(?<=<Version>)[^<]+' .github/ci/NOAutopilot.CI.csproj | head -1)
+              if [ -z "$VER" ]; then
+                  echo "::error::Could not detect version from CI csproj"
+                  exit 1
+              fi
+          fi
+          echo "VERSION=$VER" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $VER"
+
+      - name: Build mod (Release)
+        run: dotnet build .github/ci/NOAutopilot.CI.csproj -c Release --configfile .github/ci/NuGet.config
+
+      - name: Package artifacts
+        run: |
+          mkdir -p artifact
+          cp bin/Release/NO-CursorPilot.dll artifact/
+          [ -f bin/Release/NO-CursorPilot.pdb ] && cp bin/Release/NO-CursorPilot.pdb artifact/
+          cd artifact && zip -r "../NO-CursorPilot-v${{ steps.version.outputs.VERSION }}.zip" .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: NO-CursorPilot v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## NO-CursorPilot v${{ steps.version.outputs.VERSION }}
+
+            BepInEx 5 plugin for Nuclear Option that flies your aircraft toward where the camera is looking.
+
+            ### Installation
+            1. Install BepInEx 5 in the Nuclear Option game directory.
+            2. Download `NO-CursorPilot-v${{ steps.version.outputs.VERSION }}.zip` (or the raw `NO-CursorPilot.dll`).
+            3. Extract / drop the DLL into `BepInEx/plugins/`.
+            4. Launch the game and press **F9** to toggle the mod.
+
+            See [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) and [TUNING.md](https://github.com/${{ github.repository }}/blob/main/TUNING.md) for usage.
+          prerelease: ${{ github.event.inputs.prerelease }}
+          files: |
+            NO-CursorPilot-v${{ steps.version.outputs.VERSION }}.zip
+            artifact/NO-CursorPilot.dll
+          generate_release_notes: true

@@ -11,7 +11,7 @@ namespace NOCursorPilot
     {
         public const string PluginGuid    = "com.cursorpilot.NOCursorPilot";
         public const string PluginName    = "NOCursorPilot";
-        public const string PluginVersion = "0.1.0";
+        public const string PluginVersion = "0.2.1";
 
         public static bool Enabled;
         public static ManualLogSource LogSource;

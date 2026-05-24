@@ -120,12 +120,20 @@ namespace NOCursorPilot
                              Mathf.Abs(stickRoll)  > stickThreshold ||
                              Mathf.Abs(stickYaw)   > stickThreshold;
 
-            if (freeLookHeld || camRecovering)
+            if (freeLookHeld)
             {
-                // Reset mod state each frame so PID integrators and output smoothing don't
-                // dump accumulated error / stale values into controls when cursor pilot resumes.
+                // Reset only while Free Look is HELD: player flies manually with camera under
+                // their control. Zeroes mod state so resume after release is fresh.
                 ResetState();
-                gate = freeLookHeld ? "freeLook" : "camRecover";
+                gate = "freeLook";
+                finalPitch = stickPitch; finalRoll = stickRoll; finalYaw = stickYaw;
+            }
+            else if (camRecovering)
+            {
+                // During camera recovery + post-recovery grace: don't write to controls, but
+                // let PID + smoothing keep running so they warm up to the (now stable) camera
+                // direction. By the time grace ends, no stale-state dump on resume.
+                gate = "camRecover";
                 finalPitch = stickPitch; finalRoll = stickRoll; finalYaw = stickYaw;
             }
             else if (stickHeld)

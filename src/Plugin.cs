@@ -13,7 +13,7 @@ namespace NOCursorPilot
         public const string PluginName    = "NOCursorPilot";
         public const string PluginVersion = "0.2.1";
 
-        public static bool Enabled;
+        public static bool Enabled = true;
         public static ManualLogSource LogSource;
         private Harmony _harmony;
         private CameraMode _lastCamMode;
@@ -54,15 +54,15 @@ namespace NOCursorPilot
                 "Toggle cursor pilot on/off.");
 
             DumpKey = Config.Bind("Controls", "DumpKey",
-                new KeyboardShortcut(KeyCode.F1),
-                "Dump last N telemetry snapshots to the BepInEx log.");
+                new KeyboardShortcut(KeyCode.None),
+                "Dump last N telemetry snapshots to the BepInEx log. Unbound by default.");
 
             DumpProfileKey = Config.Bind("Controls", "DumpProfileKey",
-                new KeyboardShortcut(KeyCode.F2),
-                "Dump current PID + tuning values to BepInEx/config/NOCursorPilot.profiles/ as a .cfg file.");
+                new KeyboardShortcut(KeyCode.None),
+                "Dump current PID + tuning values to BepInEx/config/NOCursorPilot.profiles/ as a .cfg file. Unbound by default.");
 
             ReloadConfigKey = Config.Bind("Controls", "ReloadConfigKey",
-                new KeyboardShortcut(KeyCode.F3),
+                new KeyboardShortcut(KeyCode.F1),
                 "Re-read the BepInEx config file from disk. Use after editing values externally.");
 
             Sensitivity = Config.Bind("Flight", "Sensitivity", 5.0f,

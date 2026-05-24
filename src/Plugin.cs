@@ -83,14 +83,14 @@ namespace NOCursorPilot
             IntegralLimit = Config.Bind("Flight.PID", "IntegralLimit", 1.0f,
                 "Anti-windup cap on integrator magnitude per axis.");
 
-            KdPitch = Config.Bind("Flight.PID", "KdPitch", 0.08f,
+            KdPitch = Config.Bind("Flight.PID", "KdPitch", 0.18f,
                 "Pitch D gain. Subtracts (KdPitch * body_pitch_rate) from pitch command. " +
                 "Damps inertial overshoot. Try 0.02-0.2. Negate if oscillation worsens.");
 
-            KdYaw = Config.Bind("Flight.PID", "KdYaw", 0.08f,
+            KdYaw = Config.Bind("Flight.PID", "KdYaw", 0.15f,
                 "Yaw D gain. Try 0.02-0.2. Negate if needed.");
 
-            KdRoll = Config.Bind("Flight.PID", "KdRoll", 0.08f,
+            KdRoll = Config.Bind("Flight.PID", "KdRoll", -0.35f,
                 "Roll D gain. Try 0.02-0.2. Negate if needed.");
 
             AggressiveTurnAngle = Config.Bind("Flight", "AggressiveTurnAngle", 3.0f,

@@ -1,11 +1,11 @@
 # NO-CursorPilot
 
-BepInEx 5 plugin for **Nuclear Option** that flies your aircraft toward where the camera is looking. Orbit camera becomes the aiming input; a PID controller drives pitch / roll / yaw to match.
+A mod that turns your **Nuclear Option** into a more arcade-y game control. in short this mod allows you to flies your aircraft toward where the orbit camera is looking.
 
 ## Install
 
 1. Install BepInEx 5 in the Nuclear Option game directory.
-2. Drop `NO-CursorPilot.dll` into `BepInEx/plugins/`.
+2. Drop `NO-CursorPilot.dll` into `/path/to/NO/BepInEx/plugins/`.
 3. Launch the game. Press **F9** to toggle the mod on.
 
 ## Hotkeys
@@ -85,9 +85,3 @@ src/
   NOAutopilot.CI.csproj  netstandard2.1 project, BepInEx + UnityEngine.Modules
   stubs/                 Minimal signature stubs (Assembly-CSharp, Rewired_Core)
 ```
-
-## Compatibility
-
-- BepInEx 5.x
-- Nuclear Option (uses Unity 2022.3, Rewired input, Harmony 2.x)
-- Linux / Windows / Mac (BepInEx supports all three)

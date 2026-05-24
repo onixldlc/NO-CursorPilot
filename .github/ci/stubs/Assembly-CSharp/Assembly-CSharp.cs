@@ -68,6 +68,7 @@ public class CameraStateManager : SceneSingleton<CameraStateManager>
 {
 	public static CameraMode cameraMode;
 	public Rigidbody followingRB;
+	public Transform cameraPivot;
 }
 
 public abstract class PilotBaseState

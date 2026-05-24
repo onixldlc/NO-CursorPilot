@@ -56,7 +56,15 @@ namespace NOCursorPilot
 
             float sensitivity = Plugin.Sensitivity.Value;
             Vector3 localTarget = aircraftTf.InverseTransformPoint(flyTarget).normalized * sensitivity;
-            float angleOff = Vector3.Angle(aircraftTf.forward, flyTarget - aircraftTf.position);
+
+            // angleOff uses velocity direction (where plane is actually heading),
+            // not nose forward. Plane has inertia; nose can be on-target while
+            // velocity still drifts. Velocity reference closes that gap.
+            // Fall back to nose forward at very low speed (taxi / stall).
+            Vector3 flightDir = (aircraft.rb != null && aircraft.rb.velocity.sqrMagnitude > 25f)
+                ? aircraft.rb.velocity.normalized
+                : aircraftTf.forward;
+            float angleOff = Vector3.Angle(flightDir, flyTarget - aircraftTf.position);
 
             float wingsLevelErr = aircraftTf.right.y;
             float pitchErr = -localTarget.y;
@@ -76,25 +84,18 @@ namespace NOCursorPilot
             // === Sync PID gains from config (cheap; ConfigEntry getter is just a field read) ===
             float ki = Plugin.Ki.Value;
             float intLim = Plugin.IntegralLimit.Value;
-            float deadzone = Plugin.DeadzoneAngle.Value;
 
             pitchPid.Kp = 1f; pitchPid.Ki = ki; pitchPid.Kd = Plugin.KdPitch.Value; pitchPid.IntegralLimit = intLim;
             yawPid.Kp   = 1f; yawPid.Ki   = ki; yawPid.Kd   = Plugin.KdYaw.Value;   yawPid.IntegralLimit   = intLim;
             rollPid.Kp  = 1f; rollPid.Ki  = ki; rollPid.Kd  = Plugin.KdRoll.Value;  rollPid.IntegralLimit  = intLim;
 
             // === Compute PID outputs (Kp=1 because error already scaled by Sensitivity) ===
-            bool freezeI = angleOff < deadzone;
-            float pitch = pitchPid.Compute(pitchErr, localAngVel.x, dt, freezeI);
+            // No freezeI: integrator anti-windup is handled by IntegralLimit clamp.
+            float pitch = pitchPid.Compute(pitchErr, localAngVel.x, dt, false);
             float yaw   = Plugin.UseYaw.Value
-                ? yawPid.Compute(yawErr, localAngVel.y, dt, freezeI)
+                ? yawPid.Compute(yawErr, localAngVel.y, dt, false)
                 : 0f;
-            float roll  = rollPid.Compute(rollErr, localAngVel.z, dt, freezeI);
-
-            // === DEADZONE FADE on pitch/yaw ===
-            const float fadeBand = 5f;
-            float fade = Mathf.InverseLerp(deadzone, deadzone + fadeBand, angleOff);
-            pitch *= fade;
-            yaw   *= fade;
+            float roll  = rollPid.Compute(rollErr, localAngVel.z, dt, false);
 
             float rawWantPitch = Mathf.Clamp(pitch, -1f, 1f);
             float rawWantRoll  = Mathf.Clamp(roll, -1f, 1f);
@@ -113,14 +114,18 @@ namespace NOCursorPilot
 
             bool freeLookHeld = GameManager.playerInput != null &&
                                 GameManager.playerInput.GetButton("Free Look");
+            bool camRecovering = CameraOrbitPatch.IsRecovering;
             const float stickThreshold = 0.05f;
             bool stickHeld = Mathf.Abs(stickPitch) > stickThreshold ||
                              Mathf.Abs(stickRoll)  > stickThreshold ||
                              Mathf.Abs(stickYaw)   > stickThreshold;
 
-            if (freeLookHeld)
+            if (freeLookHeld || camRecovering)
             {
-                gate = "freeLook";
+                // Reset mod state each frame so PID integrators and output smoothing don't
+                // dump accumulated error / stale values into controls when cursor pilot resumes.
+                ResetState();
+                gate = freeLookHeld ? "freeLook" : "camRecover";
                 finalPitch = stickPitch; finalRoll = stickRoll; finalYaw = stickYaw;
             }
             else if (stickHeld)
@@ -156,7 +161,7 @@ namespace NOCursorPilot
                     stickYaw         = stickYaw,
                     localTarget      = localTarget,
                     angleOff         = angleOff,
-                    fade             = fade,
+                    fade             = 1f,
                     outPitch         = finalPitch,
                     outRoll          = finalRoll,
                     outYaw           = finalYaw,

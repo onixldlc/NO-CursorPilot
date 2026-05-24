@@ -32,11 +32,13 @@ namespace NOCursorPilot
         public static ConfigEntry<float> KdYaw;
         public static ConfigEntry<float> KdRoll;
         public static ConfigEntry<float> AggressiveTurnAngle;
-        public static ConfigEntry<float> DeadzoneAngle;
         public static ConfigEntry<float> AimDistance;
         public static ConfigEntry<bool>  UseYaw;
         public static ConfigEntry<bool>  InvertPitch;
         public static ConfigEntry<bool>  InvertRoll;
+        public static ConfigEntry<bool>  TurnToFreelook;
+        public static ConfigEntry<float> FreelookRecoverySeconds;
+        public static ConfigEntry<float> FreelookGraceSeconds;
         public static ConfigEntry<bool>  ShowHudLabel;
 
         public static ConfigEntry<bool>  TelemetryEnabled;
@@ -95,9 +97,6 @@ namespace NOCursorPilot
                 "Degrees off target where full aggressive bank applies. " +
                 "Below this angle blends toward wings-level. Lower = more banking even at small errors.");
 
-            DeadzoneAngle = Config.Bind("Flight", "DeadzoneAngle", 2.0f,
-                "Degrees off target below which pitch/yaw inputs fade to zero.");
-
             AimDistance = Config.Bind("Flight", "AimDistance", 500.0f,
                 "Meters ahead the virtual target is projected. " +
                 "Larger = smoother but less responsive.");
@@ -110,6 +109,19 @@ namespace NOCursorPilot
 
             InvertRoll = Config.Bind("Flight", "InvertRoll", false,
                 "Flip roll sign if plane banks wrong way.");
+
+            TurnToFreelook = Config.Bind("Flight", "TurnToFreelook", false,
+                "On Free Look release: true = plane turns to wherever camera ended up " +
+                "(default cursor-pilot chase). false = camera animates back to plane's " +
+                "velocity direction over FreelookRecoverySeconds; plane holds course.");
+
+            FreelookRecoverySeconds = Config.Bind("Flight", "FreelookRecoverySeconds", 0.5f,
+                "Seconds for camera pan/tilt to decay back to plane velocity direction after " +
+                "Free Look release, when TurnToFreelook = false. Lower = snappier, higher = lazier.");
+
+            FreelookGraceSeconds = Config.Bind("Flight", "FreelookGraceSeconds", 0.5f,
+                "Extra delay after Free Look release (or camera-recovery completion) before " +
+                "cursor pilot resumes plane control. Prevents jerk from stale PID state.");
 
             ShowHudLabel = Config.Bind("UI", "ShowHudLabel", true,
                 "Show 'CURSOR' label near top of screen when active.");

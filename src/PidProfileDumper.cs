@@ -57,7 +57,6 @@ namespace NOCursorPilot
             sb.AppendLine($"Sensitivity = {Plugin.Sensitivity.Value}");
             sb.AppendLine($"TargetSmoothing = {Plugin.TargetSmoothing.Value}");
             sb.AppendLine($"AggressiveTurnAngle = {Plugin.AggressiveTurnAngle.Value}");
-            sb.AppendLine($"DeadzoneAngle = {Plugin.DeadzoneAngle.Value}");
             sb.AppendLine($"AimDistance = {Plugin.AimDistance.Value}");
             sb.AppendLine($"OutputSmoothing = {Plugin.OutputSmoothing.Value}");
             sb.AppendLine($"UseYaw = {Plugin.UseYaw.Value}");

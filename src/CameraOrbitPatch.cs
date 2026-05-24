@@ -80,11 +80,26 @@ namespace NOCursorPilot
             }
         }
 
-        // ===== Heading compensation =====
-        private static readonly FieldInfo fPanView = typeof(CameraOrbitState).GetField("panView", BindingFlags.Instance | BindingFlags.NonPublic);
+        // ===== Heading compensation + free-look recovery =====
+        private static readonly FieldInfo fPanView  = typeof(CameraOrbitState).GetField("panView",  BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo fTiltView = typeof(CameraOrbitState).GetField("tiltView", BindingFlags.Instance | BindingFlags.NonPublic);
 
         private static float prevHeadingDeg;
         private static bool  prevHeadingValid;
+
+        private static bool    prevFreeLookHeld;
+        private static bool    recovering;
+        private static float   recoveryStartTime;
+        private static float   recoveryStartPan;
+        private static float   recoveryStartTilt;
+        private static float   savedWorldYawDeg;
+        private static float   savedTiltView;
+        private static bool    savedViewValid;
+        private static float   graceEndsAt;
+
+        // CursorFlightPatch checks this to stop driving the plane while camera animates back
+        // and during the post-recovery grace period.
+        public static bool IsRecovering => recovering || Time.unscaledTime < graceEndsAt;
 
         [HarmonyPatch("UpdateState")]
         [HarmonyPostfix]
@@ -93,25 +108,85 @@ namespace NOCursorPilot
             if (!Plugin.Enabled || CameraStateManager.cameraMode != CameraMode.orbit || cam == null || cam.followingRB == null)
             {
                 prevHeadingValid = false;
+                prevFreeLookHeld = false;
+                recovering = false;
                 return;
             }
 
+            // Heading compensation: subtract plane yaw delta from panView so camera stays world-absolute.
             Vector3 fwd = cam.followingRB.velocity + cam.followingRB.transform.forward * 10f;
             fwd.y = 0f;
-            if (fwd.sqrMagnitude < 0.0001f) { prevHeadingValid = false; return; }
-
-            float currHeadingDeg = Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg;
-
-            if (prevHeadingValid)
+            if (fwd.sqrMagnitude > 0.0001f)
             {
-                float delta = Mathf.DeltaAngle(prevHeadingDeg, currHeadingDeg);
-                float panView = (float)fPanView.GetValue(__instance);
-                panView -= delta;
-                fPanView.SetValue(__instance, panView);
+                float currHeadingDeg = Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg;
+                if (prevHeadingValid)
+                {
+                    float delta = Mathf.DeltaAngle(prevHeadingDeg, currHeadingDeg);
+                    float panView = (float)fPanView.GetValue(__instance);
+                    panView -= delta;
+                    fPanView.SetValue(__instance, panView);
+                }
+                prevHeadingDeg = currHeadingDeg;
+                prevHeadingValid = true;
+            }
+            else
+            {
+                prevHeadingValid = false;
             }
 
-            prevHeadingDeg = currHeadingDeg;
-            prevHeadingValid = true;
+            // Free-look recovery: snapshot world-space camera direction at Free Look press.
+            // On release with TurnToFreelook = false, lerp panView/tiltView back to values that
+            // reproduce that saved world direction given the plane's current (constantly moving)
+            // heading. End result: camera lands EXACTLY where it was at press time.
+            bool freeLookHeld = GameManager.playerInput != null && GameManager.playerInput.GetButton("Free Look");
+
+            if (!prevFreeLookHeld && freeLookHeld)
+            {
+                // Press transition: capture world yaw and tilt from current pivot rotation.
+                Vector3 pivotFwd = cam.cameraPivot != null
+                    ? cam.cameraPivot.rotation * Vector3.forward
+                    : cam.transform.forward;
+                savedWorldYawDeg = Mathf.Atan2(pivotFwd.x, pivotFwd.z) * Mathf.Rad2Deg;
+                savedTiltView    = -Mathf.Asin(Mathf.Clamp(pivotFwd.y, -1f, 1f)) * Mathf.Rad2Deg;
+                savedViewValid   = true;
+            }
+
+            if (freeLookHeld)
+            {
+                recovering = false; // cancel any in-progress recovery
+            }
+            else if (prevFreeLookHeld && !Plugin.TurnToFreelook.Value && savedViewValid)
+            {
+                recovering = true;
+                recoveryStartTime = Time.unscaledTime;
+                recoveryStartPan  = (float)fPanView.GetValue(__instance);
+                recoveryStartTilt = (float)fTiltView.GetValue(__instance);
+            }
+
+            if (recovering)
+            {
+                // panView is offset from plane heading -> derive each frame against current heading.
+                // tiltView is world-absolute pitch (because LookRotation+yaw leaves local-X horizontal).
+                float targetPan  = Mathf.DeltaAngle(prevHeadingDeg, savedWorldYawDeg);
+                float targetTilt = savedTiltView;
+
+                float duration = Mathf.Max(0.01f, Plugin.FreelookRecoverySeconds.Value);
+                float t = (Time.unscaledTime - recoveryStartTime) / duration;
+                if (t >= 1f)
+                {
+                    fPanView.SetValue(__instance,  targetPan);
+                    fTiltView.SetValue(__instance, targetTilt);
+                    recovering = false;
+                    graceEndsAt = Time.unscaledTime + Mathf.Max(0f, Plugin.FreelookGraceSeconds.Value);
+                }
+                else
+                {
+                    fPanView.SetValue(__instance,  Mathf.Lerp(recoveryStartPan,  targetPan,  t));
+                    fTiltView.SetValue(__instance, Mathf.Lerp(recoveryStartTilt, targetTilt, t));
+                }
+            }
+
+            prevFreeLookHeld = freeLookHeld;
         }
     }
 }

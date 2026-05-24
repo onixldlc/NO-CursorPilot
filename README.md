@@ -2,6 +2,11 @@
 
 A mod that turns your **Nuclear Option** into a more arcade-y game control. In short this mod allows you to fly your aircraft toward where the orbit camera is looking.
 
+![preview](preview-cursorPilot.gif)
+
+>[!NOTE]
+> This preview uses 2 other mods: [ThirdPersonHUD](https://github.com/OverlordMIke/Nuclear-Option-Mod-ThirdPersonHUD) to show the HUD while in orbit camera mode, and [CustomOrbit](https://github.com/onixldlc/NO-CustomOrbit) so you can move the center point to the top of the jet while in orbit camera mode.
+
 ## Install
 
 1. Install BepInEx 5 in the Nuclear Option game directory.

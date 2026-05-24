@@ -122,7 +122,7 @@ Dockerfile.ci            (repo root) container build definition
 ## Disclaimer
 
 >[!CAUTION]
-> Real talk!. Since this mod will basically gives you extra awareness to your surrounding as this mods allows you to control your plane whilst not in the pilot seat you might want to ask other before using this mod as using it on public server might get you kicked, banned, or penalized, so *use it at your own risk!*
+> Real talk!. Since this mod will basically gives you extra awareness to your surrounding as this mods allows you to control your plane whilst not in the pilot seat. And so you might want to ask other before using this mod as using it on public server might get you kicked, banned, or penalized, so **use it at your own risk!**
 
 >[!NOTE]
 > Hey if they can make [Nuke Thunder](https://warthunder.com/en/news/9983-event-nuclear-thunder-en) i don't see why we can't make `War Option`... tho that's probably a mobile game name so scratch that lol

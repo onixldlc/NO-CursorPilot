@@ -26,7 +26,7 @@ public class Pilot : MonoBehaviour
 
 public class Unit : MonoBehaviour
 {
-	public Rigidbody rb;
+	public Rigidbody rb { get; private set; }
 	public float radarAlt;
 	public float speed;
 }

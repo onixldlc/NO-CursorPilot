@@ -109,6 +109,21 @@ namespace NOCursorPilot
             return savedViewValid;
         }
 
+        // Reset all stale recovery / heading state every time orbit cam is entered.
+        // Without this, leaving and re-entering orbit can carry over `recovering=true` or
+        // a stale `savedViewValid` from the previous session, which causes CursorFlightPatch
+        // to fly toward an old saved direction or stay in passive recovery mode forever.
+        [HarmonyPatch("EnterState")]
+        [HarmonyPostfix]
+        static void Post_EnterState(CameraOrbitState __instance, CameraStateManager cam)
+        {
+            prevHeadingValid = false;
+            prevFreeLookHeld = false;
+            recovering = false;
+            savedViewValid = false;
+            graceEndsAt = 0f;
+        }
+
         [HarmonyPatch("UpdateState")]
         [HarmonyPostfix]
         static void Post_UpdateState(CameraOrbitState __instance, CameraStateManager cam)

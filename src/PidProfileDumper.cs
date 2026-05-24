@@ -54,12 +54,11 @@ namespace NOCursorPilot
             sb.AppendLine();
 
             sb.AppendLine("[Flight]");
-            sb.AppendLine($"Sensitivity = {Plugin.Sensitivity.Value}");
             sb.AppendLine($"TargetSmoothing = {Plugin.TargetSmoothing.Value}");
+            sb.AppendLine($"OutputSmoothing = {Plugin.OutputSmoothing.Value}");
+            sb.AppendLine($"Sensitivity = {Plugin.Sensitivity.Value}");
             sb.AppendLine($"AggressiveTurnAngle = {Plugin.AggressiveTurnAngle.Value}");
             sb.AppendLine($"AimDistance = {Plugin.AimDistance.Value}");
-            sb.AppendLine($"OutputSmoothing = {Plugin.OutputSmoothing.Value}");
-            sb.AppendLine($"UseYaw = {Plugin.UseYaw.Value}");
             sb.AppendLine($"InvertPitch = {Plugin.InvertPitch.Value}");
             sb.AppendLine($"InvertRoll = {Plugin.InvertRoll.Value}");
             sb.AppendLine();
@@ -68,8 +67,8 @@ namespace NOCursorPilot
             sb.AppendLine($"Ki = {Plugin.Ki.Value}");
             sb.AppendLine($"IntegralLimit = {Plugin.IntegralLimit.Value}");
             sb.AppendLine($"KdPitch = {Plugin.KdPitch.Value}");
-            sb.AppendLine($"KdYaw = {Plugin.KdYaw.Value}");
             sb.AppendLine($"KdRoll = {Plugin.KdRoll.Value}");
+            sb.AppendLine($"PidYawLimit = {Plugin.PidYawLimit.Value}");
 
             return sb.ToString();
         }

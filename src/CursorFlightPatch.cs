@@ -32,7 +32,13 @@ namespace NOCursorPilot
             CameraStateManager camMgr = SceneSingleton<CameraStateManager>.i;
             if (camMgr == null) return;
 
-            Vector3 rawCamForward = camMgr.transform.forward;
+            bool freeLookHeld = GameManager.playerInput != null &&
+                                GameManager.playerInput.GetButton("Free Look");
+            bool camRecovering = CameraOrbitPatch.IsRecovering;
+            bool hasSavedDir = CameraOrbitPatch.TryGetSavedDirection(out Vector3 savedDir);
+            bool useSavedDir = (freeLookHeld || camRecovering) && hasSavedDir;
+            Vector3 rawCamForward = useSavedDir ? savedDir : camMgr.transform.forward;
+
             float dt = Time.fixedDeltaTime;
             Transform aircraftTf = aircraft.transform;
 
@@ -44,7 +50,10 @@ namespace NOCursorPilot
                 smoothedCamForward = rawCamForward;
                 initialized = true;
             }
-            smoothedCamForward = Vector3.Slerp(smoothedCamForward, rawCamForward, tCam).normalized;
+            if (useSavedDir)
+                smoothedCamForward = rawCamForward.normalized;
+            else
+                smoothedCamForward = Vector3.Slerp(smoothedCamForward, rawCamForward, tCam).normalized;
 
             float stickPitch = inputs.pitch;
             float stickRoll  = inputs.roll;
@@ -57,10 +66,6 @@ namespace NOCursorPilot
             float sensitivity = Plugin.Sensitivity.Value;
             Vector3 localTarget = aircraftTf.InverseTransformPoint(flyTarget).normalized * sensitivity;
 
-            // angleOff uses velocity direction (where plane is actually heading),
-            // not nose forward. Plane has inertia; nose can be on-target while
-            // velocity still drifts. Velocity reference closes that gap.
-            // Fall back to nose forward at very low speed (taxi / stall).
             Vector3 flightDir = (aircraft.rb != null && aircraft.rb.velocity.sqrMagnitude > 25f)
                 ? aircraft.rb.velocity.normalized
                 : aircraftTf.forward;
@@ -112,38 +117,19 @@ namespace NOCursorPilot
             string gate;
             float finalPitch, finalRoll, finalYaw;
 
-            bool freeLookHeld = GameManager.playerInput != null &&
-                                GameManager.playerInput.GetButton("Free Look");
-            bool camRecovering = CameraOrbitPatch.IsRecovering;
             const float stickThreshold = 0.05f;
             bool stickHeld = Mathf.Abs(stickPitch) > stickThreshold ||
                              Mathf.Abs(stickRoll)  > stickThreshold ||
                              Mathf.Abs(stickYaw)   > stickThreshold;
 
-            if (freeLookHeld)
-            {
-                // Reset only while Free Look is HELD: player flies manually with camera under
-                // their control. Zeroes mod state so resume after release is fresh.
-                ResetState();
-                gate = "freeLook";
-                finalPitch = stickPitch; finalRoll = stickRoll; finalYaw = stickYaw;
-            }
-            else if (camRecovering)
-            {
-                // During camera recovery + post-recovery grace: don't write to controls, but
-                // let PID + smoothing keep running so they warm up to the (now stable) camera
-                // direction. By the time grace ends, no stale-state dump on resume.
-                gate = "camRecover";
-                finalPitch = stickPitch; finalRoll = stickRoll; finalYaw = stickYaw;
-            }
-            else if (stickHeld)
+            if (stickHeld)
             {
                 gate = "stickOverride";
                 finalPitch = stickPitch; finalRoll = stickRoll; finalYaw = stickYaw;
             }
             else
             {
-                gate = "wrote";
+                gate = useSavedDir ? (freeLookHeld ? "freeLookTrack" : "savedDirHold") : "wrote";
                 inputs.pitch = smoothedPitch;
                 inputs.roll  = smoothedRoll;
                 inputs.yaw   = smoothedYaw;

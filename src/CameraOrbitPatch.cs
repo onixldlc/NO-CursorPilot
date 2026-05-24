@@ -95,11 +95,19 @@ namespace NOCursorPilot
         private static float   savedWorldYawDeg;
         private static float   savedTiltView;
         private static bool    savedViewValid;
+        private static Vector3 savedPivotForward;
+        private static Vector3 savedCursorPilotDir;
         private static float   graceEndsAt;
 
         // CursorFlightPatch checks this to stop driving the plane while camera animates back
-        // and during the post-recovery grace period.
         public static bool IsRecovering => recovering || Time.unscaledTime < graceEndsAt;
+
+        // CursorFlightPatch uses this to keep flying toward the pre-Free-Look direction
+        public static bool TryGetSavedDirection(out Vector3 dir)
+        {
+            dir = savedCursorPilotDir;
+            return savedViewValid;
+        }
 
         [HarmonyPatch("UpdateState")]
         [HarmonyPostfix]
@@ -135,20 +143,21 @@ namespace NOCursorPilot
             }
 
             // Free-look recovery: snapshot world-space camera direction at Free Look press.
-            // On release with TurnToFreelook = false, lerp panView/tiltView back to values that
-            // reproduce that saved world direction given the plane's current (constantly moving)
-            // heading. End result: camera lands EXACTLY where it was at press time.
             bool freeLookHeld = GameManager.playerInput != null && GameManager.playerInput.GetButton("Free Look");
 
             if (!prevFreeLookHeld && freeLookHeld)
             {
-                // Press transition: capture world yaw and tilt from current pivot rotation.
+                // Press transition: capture two things.
+                // 1. pivot.forward: used for camera-state recovery (decompose to panView/tiltView targets).
+                // 2. the actual cursor pilot input direction the mod was tracking
                 Vector3 pivotFwd = cam.cameraPivot != null
                     ? cam.cameraPivot.rotation * Vector3.forward
                     : cam.transform.forward;
-                savedWorldYawDeg = Mathf.Atan2(pivotFwd.x, pivotFwd.z) * Mathf.Rad2Deg;
-                savedTiltView    = -Mathf.Asin(Mathf.Clamp(pivotFwd.y, -1f, 1f)) * Mathf.Rad2Deg;
-                savedViewValid   = true;
+                savedPivotForward     = pivotFwd.normalized;
+                savedCursorPilotDir   = cam.transform.forward.normalized;
+                savedWorldYawDeg      = Mathf.Atan2(pivotFwd.x, pivotFwd.z) * Mathf.Rad2Deg;
+                savedTiltView         = -Mathf.Asin(Mathf.Clamp(pivotFwd.y, -1f, 1f)) * Mathf.Rad2Deg;
+                savedViewValid        = true;
             }
 
             if (freeLookHeld)

@@ -124,6 +124,43 @@ namespace NOCursorPilot
             graceEndsAt = 0f;
         }
 
+        // Mouse-sensitivity multiplier on top of PlayerSettings.viewSensitivity.
+        // Wraps CameraOrbitState.Inputs(): captures panView/tiltView before, scales the delta
+        // produced by Inputs() after. Skips the Center-button reset frame so panView=0 doesn't
+        // get mis-scaled into -prev * factor.
+        [HarmonyPatch("Inputs")]
+        [HarmonyPrefix]
+        static void Pre_Inputs(CameraOrbitState __instance, out Vector2 __state)
+        {
+            __state = new Vector2(
+                (float)fPanView.GetValue(__instance),
+                (float)fTiltView.GetValue(__instance));
+        }
+
+        [HarmonyPatch("Inputs")]
+        [HarmonyPostfix]
+        static void Post_Inputs(CameraOrbitState __instance, Vector2 __state)
+        {
+            if (!Plugin.Enabled) return;
+
+            // Pick sensitivity based on Free Look state.
+            bool freeLook = GameManager.playerInput != null && GameManager.playerInput.GetButton("Free Look");
+            float scale = freeLook
+                ? Plugin.FreelookMouseSensitivity.Value
+                : Plugin.OrbitMouseSensitivity.Value;
+            if (Mathf.Approximately(scale, 1f)) return;
+
+            // Don't rescale the Center-button reset.
+            if (GameManager.playerInput != null && GameManager.playerInput.GetButtonDown("Center")) return;
+
+            float newPan  = (float)fPanView.GetValue(__instance);
+            float newTilt = (float)fTiltView.GetValue(__instance);
+            float dPan    = newPan  - __state.x;
+            float dTilt   = newTilt - __state.y;
+            fPanView.SetValue(__instance,  __state.x + dPan  * scale);
+            fTiltView.SetValue(__instance, __state.y + dTilt * scale);
+        }
+
         [HarmonyPatch("UpdateState")]
         [HarmonyPostfix]
         static void Post_UpdateState(CameraOrbitState __instance, CameraStateManager cam)

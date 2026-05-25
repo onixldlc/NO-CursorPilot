@@ -25,6 +25,7 @@ namespace NOCursorPilot
 
         public static ConfigEntry<float> OrbitMouseSensitivity;
         public static ConfigEntry<float> FreelookMouseSensitivity;
+        public static ConfigEntry<float> Sensitivity;
         public static ConfigEntry<float> TargetSmoothing;
         public static ConfigEntry<float> OutputSmoothing;
         public static ConfigEntry<float> Ki;
@@ -75,6 +76,9 @@ namespace NOCursorPilot
                 "Multiplier on mouse pan/tilt accumulation while Free Look is HELD in orbit cam. " +
                 "Independent from OrbitMouseSensitivity so you can have e.g. slow cursor pilot aim " +
                 "but fast freelook scanning.");
+
+            Sensitivity = Config.Bind("Flight", "Sensitivity", 5.0f,
+                "Proportional gain on local-space error. Higher = more aggressive.");
 
             TargetSmoothing = Config.Bind("Flight", "TargetSmoothing", 3.0f,
                 "Camera-direction smoothing lambda (1 - exp(-lambda * dt)). " +

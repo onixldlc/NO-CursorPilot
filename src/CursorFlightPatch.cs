@@ -1,34 +1,22 @@
-using System;
-using System.Linq;
-using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 
 namespace NOCursorPilot
 {
-    // Pitch and roll: our custom PID (aggressive, full deflection authority for big turns).
-    // Yaw: 100% game's autopilot yaw PID (silky, no wobble, the part we couldn't match).
-    // Both stack on top of player stick (assistive). Stick always wins via clamp headroom.
     [HarmonyPatch(typeof(PilotPlayerState), "PlayerAxisControls")]
     internal static class CursorFlightPatch
     {
         private static Vector3 smoothedCamForward;
-        private static float smoothedPitch, smoothedRoll;
+        private static float smoothedPitch, smoothedRoll, smoothedYaw;
         private static bool initialized;
 
         private static readonly PidController pitchPid = new PidController();
+        private static readonly PidController yawPid   = new PidController();
         private static readonly PidController rollPid  = new PidController();
-
-        private static readonly FieldInfo fForwardFlightController =
-            typeof(Autopilot).GetField("forwardFlightController",
-                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
-
-        private static MethodInfo cachedApplyInputs;
-        private static Type cachedControllerType;
-        private static readonly ControlInputs gameYawScratch = new ControlInputs();
 
         static void Postfix(PilotPlayerState __instance)
         {
+            // Hard gates: mod not actively engaged. Reset all state so next engagement starts fresh.
             if (!Plugin.Enabled)                                   { ResetState(); return; }
             if (__instance?.pilot?.aircraft == null)               { ResetState(); return; }
             if (!GameManager.flightControlsEnabled)                { ResetState(); return; }
@@ -39,20 +27,21 @@ namespace NOCursorPilot
 
             Aircraft aircraft = __instance.pilot.aircraft;
             ControlInputs inputs = __instance.controlInputs;
-            if (inputs == null || aircraft.cockpit == null) return;
+            if (inputs == null) return;
 
             CameraStateManager camMgr = SceneSingleton<CameraStateManager>.i;
             if (camMgr == null) return;
 
-            // === Camera direction (saved during Free Look hold / recovery, else live) ===
-            bool freeLookHeld  = GameManager.playerInput != null &&
-                                 GameManager.playerInput.GetButton("Free Look");
+            bool freeLookHeld = GameManager.playerInput != null &&
+                                GameManager.playerInput.GetButton("Free Look");
             bool camRecovering = CameraOrbitPatch.IsRecovering;
-            bool hasSavedDir   = CameraOrbitPatch.TryGetSavedDirection(out Vector3 savedDir);
-            bool useSavedDir   = (freeLookHeld || camRecovering) && hasSavedDir;
+            bool hasSavedDir = CameraOrbitPatch.TryGetSavedDirection(out Vector3 savedDir);
+            bool useSavedDir = (freeLookHeld || camRecovering) && hasSavedDir;
             Vector3 rawCamForward = useSavedDir ? savedDir : camMgr.transform.forward;
 
             float dt = Time.fixedDeltaTime;
+            Transform aircraftTf = aircraft.transform;
+
             float camLambda = Plugin.TargetSmoothing.Value;
             float tCam = camLambda > 0f ? 1f - Mathf.Exp(-camLambda * dt) : 1f;
 
@@ -66,135 +55,117 @@ namespace NOCursorPilot
             else
                 smoothedCamForward = Vector3.Slerp(smoothedCamForward, rawCamForward, tCam).normalized;
 
-            // Snapshot stick BEFORE we write inputs.
             float stickPitch = inputs.pitch;
             float stickRoll  = inputs.roll;
             float stickYaw   = inputs.yaw;
 
-            Transform planeTf = aircraft.transform;
-            Vector3 planeFwd  = planeTf.forward;
-            float angleOff    = Vector3.Angle(planeFwd, smoothedCamForward);
-
-            // === CUSTOM PID: pitch + roll ===
+            // === ERROR PROXIES ===
             float aimDistance = Plugin.AimDistance.Value;
-            Vector3 flyTarget = planeTf.position + smoothedCamForward * aimDistance;
-            float sensitivity = Plugin.Sensitivity.Value;
-            Vector3 localTarget = planeTf.InverseTransformPoint(flyTarget).normalized * sensitivity;
+            Vector3 flyTarget = aircraftTf.position + smoothedCamForward * aimDistance;
 
-            float wingsLevelErr = planeTf.right.y;
-            float customPitchErr = -localTarget.y;
+            float sensitivity = Plugin.Sensitivity.Value;
+            Vector3 localTarget = aircraftTf.InverseTransformPoint(flyTarget).normalized * sensitivity;
+
+            Vector3 flightDir = (aircraft.rb != null && aircraft.rb.velocity.sqrMagnitude > 25f)
+                ? aircraft.rb.velocity.normalized
+                : aircraftTf.forward;
+            float angleOff = Vector3.Angle(flightDir, flyTarget - aircraftTf.position);
+
+            float wingsLevelErr = aircraftTf.right.y;
+            float pitchErr = -localTarget.y;
+            float yawErr   = localTarget.x;
             float aggressiveAngle = Plugin.AggressiveTurnAngle.Value;
             float influence = Mathf.InverseLerp(0f, aggressiveAngle, angleOff);
-            float customRollErr = Mathf.Lerp(wingsLevelErr, localTarget.x, influence);
+            float rollErr = Mathf.Lerp(wingsLevelErr, localTarget.x, influence);
 
-            if (Plugin.InvertPitch.Value) customPitchErr = -customPitchErr;
-            if (Plugin.InvertRoll.Value)  customRollErr  = -customRollErr;
+            if (Plugin.InvertPitch.Value) pitchErr = -pitchErr;
+            if (Plugin.InvertRoll.Value)  rollErr  = -rollErr;
 
+            // Body-frame angular velocity for D-term
             Vector3 localAngVel = aircraft.rb != null
-                ? planeTf.InverseTransformDirection(aircraft.rb.angularVelocity)
+                ? aircraftTf.InverseTransformDirection(aircraft.rb.angularVelocity)
                 : Vector3.zero;
 
+            // === Sync PID gains from config (cheap; ConfigEntry getter is just a field read) ===
             float ki = Plugin.Ki.Value;
             float intLim = Plugin.IntegralLimit.Value;
+
             pitchPid.Kp = 1f; pitchPid.Ki = ki; pitchPid.Kd = Plugin.KdPitch.Value; pitchPid.IntegralLimit = intLim;
+            yawPid.Kp   = 1f; yawPid.Ki   = ki; yawPid.Kd   = Plugin.KdYaw.Value;   yawPid.IntegralLimit   = intLim;
             rollPid.Kp  = 1f; rollPid.Ki  = ki; rollPid.Kd  = Plugin.KdRoll.Value;  rollPid.IntegralLimit  = intLim;
 
-            float customPitchRaw = Mathf.Clamp(pitchPid.Compute(customPitchErr, localAngVel.x, dt, false), -1f, 1f);
-            float customRollRaw  = Mathf.Clamp(rollPid.Compute(customRollErr,  localAngVel.z, dt, false), -1f, 1f);
+            // === Compute PID outputs (Kp=1 because error already scaled by Sensitivity) ===
+            // No freezeI: integrator anti-windup is handled by IntegralLimit clamp.
+            float pitch = pitchPid.Compute(pitchErr, localAngVel.x, dt, false);
+            float yaw   = Plugin.UseYaw.Value
+                ? yawPid.Compute(yawErr, localAngVel.y, dt, false)
+                : 0f;
+            float roll  = rollPid.Compute(rollErr, localAngVel.z, dt, false);
 
+            float rawWantPitch = Mathf.Clamp(pitch, -1f, 1f);
+            float rawWantRoll  = Mathf.Clamp(roll, -1f, 1f);
+            float rawWantYaw   = Mathf.Clamp(yaw, -1f, 1f);
+
+            // === OUTPUT SMOOTHING ===
             float outLambda = Plugin.OutputSmoothing.Value;
             float tOut = outLambda > 0f ? 1f - Mathf.Exp(-outLambda * dt) : 1f;
-            smoothedPitch = Mathf.Lerp(smoothedPitch, customPitchRaw, tOut);
-            smoothedRoll  = Mathf.Lerp(smoothedRoll,  customRollRaw,  tOut);
+            smoothedPitch = Mathf.Lerp(smoothedPitch, rawWantPitch, tOut);
+            smoothedRoll  = Mathf.Lerp(smoothedRoll,  rawWantRoll,  tOut);
+            smoothedYaw   = Mathf.Lerp(smoothedYaw,   rawWantYaw,   tOut);
 
-            // === GAME PID: yaw only ===
-            float gameYaw = TryGameYaw(aircraft, smoothedCamForward, planeTf);
+            // === SOFT GATES ===
+            string gate;
+            float finalPitch, finalRoll, finalYaw;
 
-            // === Stack with player stick (assistive) ===
-            inputs.pitch = Mathf.Clamp(smoothedPitch + stickPitch, -1f, 1f);
-            inputs.roll  = Mathf.Clamp(smoothedRoll  + stickRoll,  -1f, 1f);
-            inputs.yaw   = Mathf.Clamp(gameYaw       + stickYaw,   -1f, 1f);
+            const float stickThreshold = 0.05f;
+            bool stickHeld = Mathf.Abs(stickPitch) > stickThreshold ||
+                             Mathf.Abs(stickRoll)  > stickThreshold ||
+                             Mathf.Abs(stickYaw)   > stickThreshold;
+
+            if (stickHeld)
+            {
+                gate = "stickOverride";
+                finalPitch = stickPitch; finalRoll = stickRoll; finalYaw = stickYaw;
+            }
+            else
+            {
+                gate = useSavedDir ? (freeLookHeld ? "freeLookTrack" : "savedDirHold") : "wrote";
+                inputs.pitch = smoothedPitch;
+                inputs.roll  = smoothedRoll;
+                inputs.yaw   = smoothedYaw;
+                finalPitch = smoothedPitch; finalRoll = smoothedRoll; finalYaw = smoothedYaw;
+            }
 
             if (Plugin.TelemetryEnabled.Value)
             {
                 TelemetryRecorder.TryRecord(new TelemetryRecorder.Snapshot
                 {
-                    time               = Time.fixedTime,
-                    camForwardRaw      = rawCamForward,
+                    time             = Time.fixedTime,
+                    camForwardRaw    = rawCamForward,
                     camForwardSmoothed = smoothedCamForward,
-                    planeForward       = planeTf.forward,
-                    planeRight         = planeTf.right,
-                    planeUp            = planeTf.up,
-                    velocity           = aircraft.rb != null ? aircraft.rb.velocity : Vector3.zero,
-                    angVel             = localAngVel,
-                    speed              = aircraft.speed,
-                    radarAlt           = aircraft.radarAlt,
-                    stickPitch         = stickPitch,
-                    stickRoll          = stickRoll,
-                    stickYaw           = stickYaw,
-                    localTarget        = localTarget,
-                    angleOff           = angleOff,
-                    fade               = 1f,
-                    outPitch           = inputs.pitch,
-                    outRoll            = inputs.roll,
-                    outYaw             = inputs.yaw,
-                    camMode            = CameraStateManager.cameraMode.ToString(),
-                    gate               = useSavedDir
-                        ? (freeLookHeld ? "freeLookTrack" : "savedDirHold")
-                        : "wrote",
-                    iPitch             = pitchPid.Integral,
-                    iYaw               = 0f,
-                    iRoll              = rollPid.Integral,
+                    planeForward     = aircraftTf.forward,
+                    planeRight       = aircraftTf.right,
+                    planeUp          = aircraftTf.up,
+                    velocity         = aircraft.rb != null ? aircraft.rb.velocity : Vector3.zero,
+                    angVel           = localAngVel,
+                    speed            = aircraft.speed,
+                    radarAlt         = aircraft.radarAlt,
+                    stickPitch       = stickPitch,
+                    stickRoll        = stickRoll,
+                    stickYaw         = stickYaw,
+                    localTarget      = localTarget,
+                    angleOff         = angleOff,
+                    fade             = 1f,
+                    outPitch         = finalPitch,
+                    outRoll          = finalRoll,
+                    outYaw           = finalYaw,
+                    camMode          = CameraStateManager.cameraMode.ToString(),
+                    gate             = gate,
+                    iPitch           = pitchPid.Integral,
+                    iYaw             = yawPid.Integral,
+                    iRoll            = rollPid.Integral,
                 });
             }
-        }
-
-        // Calls game's autopilot PID, returns just its yaw output. Returns 0 if unavailable.
-        private static float TryGameYaw(Aircraft aircraft, Vector3 camForward, Transform planeTf)
-        {
-            if (fForwardFlightController == null) return 0f;
-            Autopilot ap = aircraft.cockpit.GetComponent<Autopilot>();
-            if (ap == null) return 0f;
-            object forwardController = fForwardFlightController.GetValue(ap);
-            if (forwardController == null) return 0f;
-
-            if (cachedApplyInputs == null || cachedControllerType != forwardController.GetType())
-            {
-                cachedControllerType = forwardController.GetType();
-                cachedApplyInputs = cachedControllerType
-                    .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-                    .FirstOrDefault(m =>
-                    {
-                        if (m.Name != "ApplyInputs") return false;
-                        var ps = m.GetParameters();
-                        return ps.Length == 3
-                            && ps[0].ParameterType == typeof(ControlInputs)
-                            && ps[1].ParameterType == typeof(float)
-                            && ps[2].ParameterType == typeof(Vector3);
-                    });
-            }
-            if (cachedApplyInputs == null) return 0f;
-
-            float yawErr = AngleOnAxis(planeTf.forward, camForward, planeTf.up);
-
-            // Each axis is independent in AeroPID. Pass 0 for pitch/roll error.
-            Vector3 errorAngles = new Vector3(0f, yawErr, 0f);
-            float airspeed = aircraft.rb != null ? aircraft.rb.velocity.magnitude : aircraft.speed;
-
-            // Reset scratch to avoid stale values affecting downstream readers.
-            gameYawScratch.pitch = 0f;
-            gameYawScratch.yaw   = 0f;
-            gameYawScratch.roll  = 0f;
-            cachedApplyInputs.Invoke(forwardController, new object[] { gameYawScratch, airspeed, errorAngles });
-
-            return Mathf.Clamp(gameYawScratch.yaw, -Plugin.PidYawLimit.Value, Plugin.PidYawLimit.Value);
-        }
-
-        private static float AngleOnAxis(Vector3 self, Vector3 other, Vector3 axis)
-        {
-            Vector3 from = Vector3.Cross(axis, self);
-            Vector3 to   = Vector3.Cross(axis, other);
-            return Vector3.SignedAngle(from, to, axis);
         }
 
         private static void ResetState()
@@ -202,7 +173,9 @@ namespace NOCursorPilot
             initialized = false;
             smoothedPitch = 0f;
             smoothedRoll = 0f;
+            smoothedYaw = 0f;
             pitchPid.Reset();
+            yawPid.Reset();
             rollPid.Reset();
         }
     }

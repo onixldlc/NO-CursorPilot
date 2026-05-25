@@ -33,16 +33,6 @@ public class Unit : MonoBehaviour
 
 public class Aircraft : Unit
 {
-	public UnitPart cockpit;
-}
-
-public class UnitPart : MonoBehaviour
-{
-	public Transform xform { get; }
-}
-
-public class Autopilot : MonoBehaviour
-{
 }
 
 public static class GameManager

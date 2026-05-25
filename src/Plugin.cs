@@ -23,6 +23,8 @@ namespace NOCursorPilot
         public static ConfigEntry<KeyboardShortcut> DumpProfileKey;
         public static ConfigEntry<KeyboardShortcut> ReloadConfigKey;
 
+        public static ConfigEntry<float> OrbitMouseSensitivity;
+        public static ConfigEntry<float> FreelookMouseSensitivity;
         public static ConfigEntry<float> TargetSmoothing;
         public static ConfigEntry<float> OutputSmoothing;
         public static ConfigEntry<float> Sensitivity;
@@ -63,6 +65,16 @@ namespace NOCursorPilot
             ReloadConfigKey = Config.Bind("Controls", "ReloadConfigKey",
                 new KeyboardShortcut(KeyCode.F1),
                 "Re-read the BepInEx config file from disk. Use after editing values externally.");
+
+            OrbitMouseSensitivity = Config.Bind("Camera", "OrbitMouseSensitivity", 1.0f,
+                "Multiplier on mouse pan/tilt accumulation in orbit camera mode while NOT holding Free Look. " +
+                "1.0 = game default. 2.0 = twice as fast. 0.5 = half as fast. " +
+                "Stacks on top of PlayerSettings.viewSensitivity.");
+
+            FreelookMouseSensitivity = Config.Bind("Camera", "FreelookMouseSensitivity", 1.0f,
+                "Multiplier on mouse pan/tilt accumulation while Free Look is HELD in orbit cam. " +
+                "Independent from OrbitMouseSensitivity so you can have e.g. slow cursor pilot aim " +
+                "but fast freelook scanning.");
 
             TargetSmoothing = Config.Bind("Flight", "TargetSmoothing", 3.0f,
                 "Camera-direction smoothing lambda (1 - exp(-lambda * dt)). " +

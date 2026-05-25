@@ -138,6 +138,8 @@ namespace NOCursorPilot
             _harmony = new Harmony(PluginGuid);
             _harmony.PatchAll();
 
+            TelemetryWebServer.Start();
+
             Logger.LogInfo($"{PluginName} {PluginVersion} loaded. Toggle: {ToggleKey.Value}, Dump: {DumpKey.Value}");
         }
 
@@ -189,6 +191,7 @@ namespace NOCursorPilot
         private void OnDestroy()
         {
             _harmony?.UnpatchSelf();
+            TelemetryWebServer.Stop();
         }
     }
 }

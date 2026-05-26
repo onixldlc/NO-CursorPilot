@@ -447,7 +447,7 @@
         <div class="lbl">
           <div class="name">Heading</div>
           <div class="val"><span id="headingV">000</span><small>°</small></div>
-          <div class="rng">0–360° · plane / <span style="opacity:0.7">cam</span></div>
+          <div class="rng">0–360° · plane / <span style="opacity:0.7">cam</span> / <span style="opacity:0.55">vel</span></div>
         </div>
         <div class="plot">
           <svg viewBox="0 0 800 100" preserveAspectRatio="none">
@@ -455,6 +455,7 @@
             <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid)" stroke-width="1" stroke-dasharray="2 3"/>
             <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
             <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="velHeadingPath" d="" fill="none" stroke="#cfeedd" stroke-width="1.0" stroke-dasharray="2 4" opacity="0.55" vector-effect="non-scaling-stroke"/>
             <path id="camHeadingPath" d="" fill="none" stroke="var(--rose)" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.65" vector-effect="non-scaling-stroke"/>
             <path id="headingPath" d="" fill="none" stroke="var(--rose)" stroke-width="1.4" vector-effect="non-scaling-stroke"
                   style="filter: drop-shadow(0 0 3px rgba(255,122,154,0.55));"/>
@@ -469,13 +470,14 @@
         <div class="lbl">
           <div class="name">Incline</div>
           <div class="val"><span id="inclineV">+00.0</span><small>°</small></div>
-          <div class="rng">±90° · plane / <span style="opacity:0.7">cam</span></div>
+          <div class="rng">±90° · plane / <span style="opacity:0.7">cam</span> / <span style="opacity:0.55">vel</span></div>
         </div>
         <div class="plot">
           <svg viewBox="0 0 800 100" preserveAspectRatio="none">
             <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid-strong)" stroke-width="1" stroke-dasharray="2 3"/>
             <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
             <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="velInclinePath" d="" fill="none" stroke="#cfeedd" stroke-width="1.0" stroke-dasharray="2 4" opacity="0.55" vector-effect="non-scaling-stroke"/>
             <path id="camInclinePath" d="" fill="none" stroke="var(--amber)" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.65" vector-effect="non-scaling-stroke"/>
             <path id="inclinePath" d="" fill="none" stroke="var(--amber)" stroke-width="1.4" vector-effect="non-scaling-stroke"
                   style="filter: drop-shadow(0 0 3px rgba(255,180,84,0.55));"/>
@@ -553,7 +555,7 @@
   let WINDOW = 100;     // visible samples (default 10s)
   const buf = {
     pitch: [], yaw: [], roll: [], speed: [], alt: [], heading: [], incline: [],
-    camHeading: [], camIncline: []
+    camHeading: [], camIncline: [], velHeading: [], velIncline: []
   };
 
   function push(ch, v) {
@@ -644,6 +646,7 @@
     // Heading: convert -180..180 from atan2 → 0..360 compass-style for display.
     const hdg360    = ((d.heading    % 360) + 360) % 360;
     const camHdg360 = ((d.camHeading % 360) + 360) % 360;
+    const velHdg360 = ((d.velHeading % 360) + 360) % 360;
 
     push('pitch',      d.ctrlPitch);
     push('yaw',        d.ctrlYaw);
@@ -654,6 +657,8 @@
     push('incline',    d.incline);
     push('camHeading', camHdg360);
     push('camIncline', d.camIncline);
+    push('velHeading', velHdg360);
+    push('velIncline', d.velIncline);
 
     renderChart('pitch',   1,    true,  'pitchPath',   'pitchFill',   'pitchDot');
     renderChart('yaw',     1,    true,  'yawPath',     'yawFill',     'yawDot');
@@ -665,6 +670,9 @@
     // dashed overlay = camera direction (cursor-pilot target). Line only — no fill/dot.
     renderLine('camHeading', 360, false, 'camHeadingPath');
     renderLine('camIncline', 90,  true,  'camInclinePath');
+    // white dashed = velocity vector direction (flight path).
+    renderLine('velHeading', 360, false, 'velHeadingPath');
+    renderLine('velIncline', 90,  true,  'velInclinePath');
 
     renderXY();
 
@@ -715,6 +723,8 @@
       renderChart('incline', 90,   true,  'inclinePath', 'inclineFill', 'inclineDot');
       renderLine('camHeading', 360, false, 'camHeadingPath');
       renderLine('camIncline', 90,  true,  'camInclinePath');
+      renderLine('velHeading', 360, false, 'velHeadingPath');
+      renderLine('velIncline', 90,  true,  'velInclinePath');
     }
   });
 
@@ -796,7 +806,9 @@
         heading:    Number(d.heading)||0,
         incline:    Number(d.incline)||0,
         camHeading: Number(d.camHeading)||0,
-        camIncline: Number(d.camIncline)||0
+        camIncline: Number(d.camIncline)||0,
+        velHeading: Number(d.velHeading)||0,
+        velIncline: Number(d.velIncline)||0
       };
       if (!everConnected) {
         logLine('telemetry stream connected');

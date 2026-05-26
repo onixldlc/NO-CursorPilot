@@ -34,6 +34,7 @@ namespace NOCursorPilot
         private static float _speed, _alt;
         private static float _heading, _incline;               // plane attitude (degrees)
         private static float _camHeading, _camIncline;         // cursor-pilot target direction (degrees)
+        private static float _velHeading, _velIncline;         // velocity vector direction (degrees)
         private static bool  _camValid;
 
         public static void Start() => EnsureStarted();
@@ -50,6 +51,14 @@ namespace NOCursorPilot
             _incline = Mathf.Asin(Mathf.Clamp(fwd.y, -1f, 1f)) * Mathf.Rad2Deg;          // -90..90
             _speed   = aircraft.speed;
             _alt     = aircraft.radarAlt;
+
+            // Velocity-vector direction (flight path), separate from nose direction.
+            if (aircraft.rb != null && aircraft.rb.velocity.sqrMagnitude > 1f)
+            {
+                Vector3 v = aircraft.rb.velocity.normalized;
+                _velHeading = Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg;
+                _velIncline = Mathf.Asin(Mathf.Clamp(v.y, -1f, 1f)) * Mathf.Rad2Deg;
+            }
 
             if (inputs != null)
             {
@@ -143,7 +152,9 @@ namespace NOCursorPilot
                                   ",\"heading\":"   + F(h)  +
                                   ",\"incline\":"   + F(inc) +
                                   ",\"camHeading\":" + F(ch) +
-                                  ",\"camIncline\":" + F(ci) + "}";
+                                  ",\"camIncline\":" + F(ci) +
+                                  ",\"velHeading\":" + F(_velHeading) +
+                                  ",\"velIncline\":" + F(_velIncline) + "}";
                     Send(ctx, "application/json", json);
                     return;
                 }

@@ -11,7 +11,7 @@ namespace NOCursorPilot
     {
         public const string PluginGuid    = "com.cursorpilot.NOCursorPilot";
         public const string PluginName    = "NOCursorPilot";
-        public const string PluginVersion = "0.2.2";
+        public const string PluginVersion = "0.2.3";
 
         public static bool Enabled = true;
         public static ManualLogSource LogSource;
@@ -42,14 +42,6 @@ namespace NOCursorPilot
         public static ConfigEntry<float> FreelookRecoverySeconds;
         public static ConfigEntry<float> FreelookGraceSeconds;
         public static ConfigEntry<bool>  ShowHudLabel;
-
-        public enum CursorPidMode
-        {
-            Custom,             // all axes: mod's manual PID
-            Internal,           // all axes: game's per-aircraft PID (Autopilot.forwardFlightController)
-            HybridInternalYaw,  // pitch/roll: custom. yaw: internal. Sweet spot — stable yaw + tunable bank.
-        }
-        public static ConfigEntry<CursorPidMode> PidMode;
 
         public static ConfigEntry<bool>  TelemetryEnabled;
         public static ConfigEntry<int>   TelemetryIntervalFrames;
@@ -145,14 +137,6 @@ namespace NOCursorPilot
 
             ShowHudLabel = Config.Bind("UI", "ShowHudLabel", true,
                 "Show 'CURSOR' label near top of screen when active.");
-
-            PidMode = Config.Bind("Flight", "PidMode", CursorPidMode.HybridInternalYaw,
-                "Which PID drives each axis. " +
-                "Custom = mod's manual PID on all 3 axes (uses Sensitivity, Kd*, Ki, IntegralLimit). " +
-                "Internal = game's per-aircraft PID on all 3 axes (uses game's tuned P/I/D + referenceAirspeed; " +
-                "errors are angles in degrees via TargetCalc.GetAngleOnAxis). " +
-                "HybridInternalYaw = pitch/roll use Custom, yaw uses Internal. Most stable yaw with full " +
-                "control over bank/pitch feel.");
 
             TelemetryEnabled = Config.Bind("Telemetry", "Enabled", true,
                 "Capture snapshots of camera/plane/input state into a ring buffer.");

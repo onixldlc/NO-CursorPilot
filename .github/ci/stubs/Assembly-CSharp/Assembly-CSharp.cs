@@ -33,45 +33,6 @@ public class Unit : MonoBehaviour
 
 public class Aircraft : Unit
 {
-	public UnitPart cockpit;
-}
-
-public class UnitPart : MonoBehaviour
-{
-	public Rigidbody rb;
-	public Transform xform { get; private set; }
-}
-
-// Game has `forwardFlightController` as `protected` field and ForwardFlightController as a
-// `protected` nested class inside Autopilot. Stub declares public so the compiler is happy;
-// IgnoresAccessChecksTo("Assembly-CSharp") makes runtime skip the access check. Type identity
-// at runtime requires the nested-class layout to match the game exactly.
-public class Autopilot : MonoBehaviour
-{
-	public ForwardFlightController forwardFlightController;
-
-	public class ForwardFlightController
-	{
-		public bool Enabled;
-		public float referenceAirspeed;
-		public PIDFactors pitchFlightPID;
-		public PIDFactors yawFlightPID;
-		public PIDFactors rollFlightPID;
-		public void ApplyInputs(ControlInputs inputs, float airspeed, Vector3 error) => throw null;
-		public void ApplyInputs(ControlInputs inputs, float airspeed, Vector3 error, float opacity) => throw null;
-	}
-}
-
-public class PIDFactors
-{
-	public float P { get; }
-	public float I { get; }
-	public float D { get; }
-}
-
-public static class TargetCalc
-{
-	public static float GetAngleOnAxis(Vector3 self, Vector3 other, Vector3 axis) => throw null;
 }
 
 public static class GameManager

@@ -26,9 +26,6 @@ namespace NOCursorPilot.Controller
             if (!Plugin.Enabled)                                   { Reset(); return; }
             if (instance?.pilot?.aircraft == null)                 { Reset(); return; }
             if (!GameManager.flightControlsEnabled)                { Reset(); return; }
-            if (Cursor.visible)                                    { Reset(); return; }
-            if (CursorManager.GetFlag(CursorFlags.Chat))           { Reset(); return; }
-            if (DynamicMap.mapMaximized)                           { Reset(); return; }
             if (CameraStateManager.cameraMode != CameraMode.orbit) { Reset(); return; }
 
             ControlInputs inputs = instance.controlInputs;

@@ -3,7 +3,6 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
-using NOCursorPilot.CursorFlight;
 
 namespace NOCursorPilot
 {
@@ -12,22 +11,31 @@ namespace NOCursorPilot
     {
         public const string PluginGuid    = "com.cursorpilot.NOCursorPilot";
         public const string PluginName    = "NOCursorPilot";
-        public const string PluginVersion = "0.3.0";
+        public const string PluginVersion = "0.2.2";
 
         public static bool Enabled = true;
         public static ManualLogSource LogSource;
         private Harmony _harmony;
         private CameraMode _lastCamMode;
 
-        // Keybinds + engine toggles only. Flight tuning lives in JSON profiles
-        // under BepInEx/config/NOCursorPilot.profiles/<name>.json.
         public static ConfigEntry<KeyboardShortcut> ToggleKey;
         public static ConfigEntry<KeyboardShortcut> DumpKey;
         public static ConfigEntry<KeyboardShortcut> DumpProfileKey;
         public static ConfigEntry<KeyboardShortcut> ReloadConfigKey;
 
-        public static ConfigEntry<string> ActiveProfile;
-
+        public static ConfigEntry<float> Sensitivity;
+        public static ConfigEntry<float> TargetSmoothing;
+        public static ConfigEntry<float> OutputSmoothing;
+        public static ConfigEntry<float> Ki;
+        public static ConfigEntry<float> IntegralLimit;
+        public static ConfigEntry<float> KdPitch;
+        public static ConfigEntry<float> KdYaw;
+        public static ConfigEntry<float> KdRoll;
+        public static ConfigEntry<float> AggressiveTurnAngle;
+        public static ConfigEntry<float> AimDistance;
+        public static ConfigEntry<bool>  UseYaw;
+        public static ConfigEntry<bool>  InvertPitch;
+        public static ConfigEntry<bool>  InvertRoll;
         public static ConfigEntry<bool>  TurnToFreelook;
         public static ConfigEntry<float> FreelookRecoverySeconds;
         public static ConfigEntry<float> FreelookGraceSeconds;
@@ -47,29 +55,73 @@ namespace NOCursorPilot
 
             DumpKey = Config.Bind("Controls", "DumpKey",
                 new KeyboardShortcut(KeyCode.None),
-                "Dump last N telemetry snapshots to the BepInEx log.");
+                "Dump last N telemetry snapshots to the BepInEx log. Unbound by default.");
 
             DumpProfileKey = Config.Bind("Controls", "DumpProfileKey",
                 new KeyboardShortcut(KeyCode.None),
-                "Dump active profile as JSON snapshot to NOCursorPilot.profiles/.");
+                "Dump current PID + tuning values to BepInEx/config/NOCursorPilot.profiles/ as a .cfg file. Unbound by default.");
 
             ReloadConfigKey = Config.Bind("Controls", "ReloadConfigKey",
                 new KeyboardShortcut(KeyCode.F1),
-                "Re-read BepInEx config + all JSON profiles from disk.");
+                "Re-read the BepInEx config file from disk. Use after editing values externally.");
 
-            ActiveProfile = Config.Bind("Profile", "ActiveProfile", "default",
-                "Name of the JSON profile under NOCursorPilot.profiles/ to use. " +
-                "If missing, falls back to 'default'. Files are <name>.json.");
+            Sensitivity = Config.Bind("Flight", "Sensitivity", 5.0f,
+                "Proportional gain on local-space error. Higher = more aggressive.");
 
-            TurnToFreelook = Config.Bind("Camera", "TurnToFreelook", false,
-                "On Free Look release: true = plane turns to wherever camera ended up. " +
-                "false = camera animates back to plane velocity over FreelookRecoverySeconds.");
+            TargetSmoothing = Config.Bind("Flight", "TargetSmoothing", 3.0f,
+                "Camera-direction smoothing lambda (1 - exp(-lambda * dt)). " +
+                "Higher = snappier, lower = lazier. 0 = no smoothing.");
 
-            FreelookRecoverySeconds = Config.Bind("Camera", "FreelookRecoverySeconds", 0.5f,
-                "Seconds for camera pan/tilt to decay back to plane velocity direction.");
+            OutputSmoothing = Config.Bind("Flight", "OutputSmoothing", 5.0f,
+                "Stick-output smoothing lambda. Damps oscillation at saturated inputs. " +
+                "Higher = less damping (faster response), lower = more damping. 0 = no smoothing.");
 
-            FreelookGraceSeconds = Config.Bind("Camera", "FreelookGraceSeconds", 0.5f,
-                "Extra delay after Free Look release before cursor pilot resumes plane control.");
+            Ki = Config.Bind("Flight.PID", "Ki", 0.05f,
+                "Integral gain (single value, applied to all axes). Eliminates steady-state error. " +
+                "Try 0-0.2. 0 = no I-term (PD only).");
+
+            IntegralLimit = Config.Bind("Flight.PID", "IntegralLimit", 1.0f,
+                "Anti-windup cap on integrator magnitude per axis.");
+
+            KdPitch = Config.Bind("Flight.PID", "KdPitch", 0.18f,
+                "Pitch D gain. Subtracts (KdPitch * body_pitch_rate) from pitch command. " +
+                "Damps inertial overshoot. Try 0.02-0.2. Negate if oscillation worsens.");
+
+            KdYaw = Config.Bind("Flight.PID", "KdYaw", 0.15f,
+                "Yaw D gain. Try 0.02-0.2. Negate if needed.");
+
+            KdRoll = Config.Bind("Flight.PID", "KdRoll", -0.35f,
+                "Roll D gain. Try 0.02-0.2. Negate if needed.");
+
+            AggressiveTurnAngle = Config.Bind("Flight", "AggressiveTurnAngle", 3.0f,
+                "Degrees off target where full aggressive bank applies. " +
+                "Below this angle blends toward wings-level. Lower = more banking even at small errors.");
+
+            AimDistance = Config.Bind("Flight", "AimDistance", 500.0f,
+                "Meters ahead the virtual target is projected. " +
+                "Larger = smoother but less responsive.");
+
+            UseYaw = Config.Bind("Flight", "UseYaw", true,
+                "Apply yaw correction in addition to pitch/roll.");
+
+            InvertPitch = Config.Bind("Flight", "InvertPitch", false,
+                "Flip pitch sign if plane pitches wrong way.");
+
+            InvertRoll = Config.Bind("Flight", "InvertRoll", false,
+                "Flip roll sign if plane banks wrong way.");
+
+            TurnToFreelook = Config.Bind("Flight", "TurnToFreelook", false,
+                "On Free Look release: true = plane turns to wherever camera ended up " +
+                "(default cursor-pilot chase). false = camera animates back to plane's " +
+                "velocity direction over FreelookRecoverySeconds; plane holds course.");
+
+            FreelookRecoverySeconds = Config.Bind("Flight", "FreelookRecoverySeconds", 0.5f,
+                "Seconds for camera pan/tilt to decay back to plane velocity direction after " +
+                "Free Look release, when TurnToFreelook = false. Lower = snappier, higher = lazier.");
+
+            FreelookGraceSeconds = Config.Bind("Flight", "FreelookGraceSeconds", 0.5f,
+                "Extra delay after Free Look release (or camera-recovery completion) before " +
+                "cursor pilot resumes plane control. Prevents jerk from stale PID state.");
 
             ShowHudLabel = Config.Bind("UI", "ShowHudLabel", true,
                 "Show 'CURSOR' label near top of screen when active.");
@@ -83,14 +135,10 @@ namespace NOCursorPilot
             DumpOnCameraModeChange = Config.Bind("Telemetry", "DumpOnCameraModeChange", true,
                 "Auto-dump when switching out of orbit camera mode.");
 
-            ProfileStore.LoadAll(ActiveProfile.Value);
-
             _harmony = new Harmony(PluginGuid);
             _harmony.PatchAll();
 
-            TelemetryWebServer.Start();
-
-            Logger.LogInfo($"{PluginName} {PluginVersion} loaded. Toggle: {ToggleKey.Value}, Profile: {ProfileStore.Active?.Name}");
+            Logger.LogInfo($"{PluginName} {PluginVersion} loaded. Toggle: {ToggleKey.Value}, Dump: {DumpKey.Value}");
         }
 
         private void Update()
@@ -114,9 +162,7 @@ namespace NOCursorPilot
             if (ReloadConfigKey.Value.IsDown())
             {
                 Config.Reload();
-                ProfileStore.LoadAll(ActiveProfile.Value);
-                FlightController.OnProfileReloaded();
-                Logger.LogInfo($"[Config] reloaded. Active profile: {ProfileStore.Active?.Name}");
+                Logger.LogInfo("[Config] reloaded from disk");
             }
 
             if (DumpOnCameraModeChange.Value)
@@ -143,7 +189,6 @@ namespace NOCursorPilot
         private void OnDestroy()
         {
             _harmony?.UnpatchSelf();
-            TelemetryWebServer.Stop();
         }
     }
 }

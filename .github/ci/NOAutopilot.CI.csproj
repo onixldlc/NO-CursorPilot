@@ -20,14 +20,6 @@
     <Compile Include="..\..\src\**\*.cs" Link="src\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
-  <!-- Embed src/pages/** as resources so TelemetryWebServer can serve them.
-       LogicalName becomes "pages/<relative path>" — see TelemetryWebServer.LoadPage. -->
-  <ItemGroup>
-    <EmbeddedResource Include="..\..\src\pages\**\*">
-      <LogicalName>pages/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
-  </ItemGroup>
-
   <!-- BepInEx + Unity from NuGet -->
   <ItemGroup>
     <PackageReference Include="BepInEx.Core" Version="5.*" PrivateAssets="all" />

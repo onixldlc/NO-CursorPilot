@@ -136,6 +136,10 @@ namespace NOCursorPilot
                 finalPitch = smoothedPitch; finalRoll = smoothedRoll; finalYaw = smoothedYaw;
             }
 
+            // Push live state to web telemetry AFTER inputs are finalized for this frame.
+            // smoothedCamForward is the cursor-pilot target direction (post-smoothing, post-savedDir).
+            TelemetryWebServer.UpdateState(aircraft, inputs, smoothedCamForward);
+
             if (Plugin.TelemetryEnabled.Value)
             {
                 TelemetryRecorder.TryRecord(new TelemetryRecorder.Snapshot

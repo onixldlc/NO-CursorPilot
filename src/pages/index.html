@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOCursorPilot — Live Telemetry</title>
+<style>
+  :root {
+    --bg: #060806;
+    --panel: #0c100c;
+    --panel-2: #0a0d0a;
+    --edge: #1b211b;
+    --edge-dim: #131713;
+    --grid: rgba(108,255,154,0.06);
+    --grid-strong: rgba(108,255,154,0.14);
+    --ink: #6cff9a;
+    --ink-dim: #2f7a4a;
+    --ink-deep: #144024;
+    --ink-soft: #4a8a64;
+    --amber: #ffb454;
+    --amber-dim: #7a5524;
+    --cyan: #5fd9ff;
+    --cyan-dim: #2a6a82;
+    --rose: #ff7a9a;
+    --rose-dim: #7a3a4a;
+    --violet: #b48cff;
+    --violet-dim: #5a4480;
+    --red: #ff5a5a;
+    --text: #cfeedd;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  body {
+    font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(108,255,154,0.04), transparent 60%),
+      var(--bg);
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+    z-index: 100;
+  }
+  .scan {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.14) 0 2px, transparent 2px 4px);
+    mix-blend-mode: multiply;
+    z-index: 90;
+  }
+
+  .frame {
+    max-width: 1440px;
+    margin: 0 auto;
+    border: 1px solid var(--edge);
+    background: linear-gradient(180deg, #0a0e0a 0%, #070907 100%);
+    box-shadow: 0 0 0 1px rgba(108,255,154,0.04) inset, 0 0 60px rgba(0,0,0,0.6);
+  }
+
+  /* ─── top bar ─── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--edge);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .brand .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ink);
+    box-shadow: 0 0 8px var(--ink);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  .meta { display: flex; gap: 22px; color: var(--ink-dim); align-items: center;}
+  .meta span b { color: var(--ink); font-weight: 600; }
+  .meta .sep { width: 1px; height: 14px; background: var(--edge); }
+  .seg {
+    display: flex; gap: 0;
+    border: 1px solid var(--edge);
+    background: var(--panel-2);
+  }
+  .seg button {
+    background: transparent;
+    color: var(--ink-dim);
+    border: 0;
+    padding: 5px 10px;
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    cursor: pointer;
+    text-transform: uppercase;
+    border-right: 1px solid var(--edge);
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button.on { color: var(--ink); background: var(--ink-deep); }
+  .seg button:hover:not(.on) { color: var(--text); }
+
+  /* zoom slider in topbar */
+  .zoom {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--ink-dim);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+  }
+  .zoom input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 120px; height: 4px;
+    background: var(--edge);
+    outline: none; cursor: pointer;
+  }
+  .zoom input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 10px; height: 14px;
+    background: var(--ink);
+    border: 0;
+    box-shadow: 0 0 6px var(--ink);
+  }
+  .zoom input[type=range]::-moz-range-thumb {
+    width: 10px; height: 14px;
+    background: var(--ink);
+    border: 0;
+    box-shadow: 0 0 6px var(--ink);
+  }
+  .zoom b { color: var(--ink); font-weight: 600; min-width: 28px; text-align: right; }
+
+  /* ─── body grid ─── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1px;
+    background: var(--edge);
+  }
+  .charts { background: var(--panel); padding: 18px 20px 12px; }
+  .side   { background: var(--panel); padding: 18px 20px; display: flex; flex-direction: column; min-height: 0; }
+
+  /* ─── chart row ─── */
+  .ch {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--edge);
+  }
+  .ch:last-child { border-bottom: 0; }
+  .ch .lbl { padding-top: 4px; }
+  .ch .lbl .name {
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .ch .lbl .val {
+    font-size: 22px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    line-height: 1;
+    text-shadow: 0 0 12px rgba(108,255,154,0.35);
+  }
+  .ch .lbl .val small { font-size: 11px; color: var(--ink-dim); margin-left: 4px; letter-spacing: 0; }
+  .ch .lbl .rng {
+    font-size: 9px;
+    color: var(--ink-dim);
+    letter-spacing: 0.1em;
+    margin-top: 6px;
+    text-transform: uppercase;
+  }
+  .ch.amber .lbl .val { color: var(--amber); text-shadow: 0 0 12px rgba(255,180,84,0.3); }
+  .ch.cyan  .lbl .val { color: var(--cyan);  text-shadow: 0 0 12px rgba(95,217,255,0.3); }
+  .ch.rose  .lbl .val { color: var(--rose);  text-shadow: 0 0 12px rgba(255,122,154,0.3); }
+  .ch.violet .lbl .val { color: var(--violet); text-shadow: 0 0 12px rgba(180,140,255,0.3); }
+
+  .plot {
+    position: relative;
+    height: 84px;
+    background:
+      linear-gradient(0deg, rgba(108,255,154,0.02), rgba(108,255,154,0.02));
+    border: 1px solid var(--edge-dim);
+    overflow: hidden;
+  }
+  .plot svg { display: block; width: 100%; height: 100%; }
+  .plot .axis {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 16px;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 4px;
+    font-size: 8px;
+    color: var(--ink-dim);
+    letter-spacing: 0.1em;
+    pointer-events: none;
+  }
+  .plot .yaxis {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 22px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 8px;
+    color: var(--ink-dim);
+    letter-spacing: 0.05em;
+    pointer-events: none;
+    text-align: right;
+  }
+  .plot .yaxis span { padding-right: 4px; }
+
+  /* ─── side panel ─── */
+  .panel-h {
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--edge);
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .panel-h .hint { font-size: 9px; color: var(--ink-deep); letter-spacing: 0.1em;}
+
+  .horizon {
+    position: relative;
+    height: 160px;
+    margin-bottom: 18px;
+    background: var(--panel-2);
+    border: 1px solid var(--edge);
+    overflow: hidden;
+  }
+  .horizon svg { display: block; width: 100%; height: 100%; }
+
+  .bignums {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--edge);
+    margin-bottom: 18px;
+  }
+  .bignums > div {
+    background: var(--panel-2);
+    padding: 10px 12px;
+  }
+  .bignums .k { font-size: 9px; letter-spacing: 0.2em; color: var(--ink-dim); text-transform: uppercase; }
+  .bignums .v {
+    font-size: 20px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    margin-top: 4px;
+    text-shadow: 0 0 10px rgba(108,255,154,0.3);
+  }
+  .bignums .v small { font-size: 10px; color: var(--ink-dim); margin-left: 3px; }
+  .bignums .v.amber { color: var(--amber); text-shadow: 0 0 10px rgba(255,180,84,0.3); }
+  .bignums .v.cyan  { color: var(--cyan);  text-shadow: 0 0 10px rgba(95,217,255,0.3); }
+
+  .log {
+    background: var(--panel-2);
+    border: 1px solid var(--edge);
+    padding: 10px 12px;
+    flex: 1 1 auto;
+    min-height: 160px;
+    overflow-y: auto;
+    font-size: 10px;
+    line-height: 1.6;
+    color: var(--ink-dim);
+  }
+  .log::-webkit-scrollbar { width: 6px; }
+  .log::-webkit-scrollbar-track { background: transparent; }
+  .log::-webkit-scrollbar-thumb { background: var(--edge); }
+  .log-h { flex: 0 0 auto; }
+  .log .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+  .log .l b { color: var(--ink); font-weight: 500; }
+  .log .l.warn b { color: var(--amber); }
+  .log .l.err b  { color: var(--red); }
+
+  /* ─── footer ─── */
+  .footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 20px;
+    border-top: 1px solid var(--edge);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+  }
+  .footer .right { display: flex; gap: 18px; }
+
+  /* responsive */
+  @media (max-width: 1024px) {
+    .grid { grid-template-columns: 1fr; }
+    .ch { grid-template-columns: 90px 1fr; gap: 10px; }
+    .ch .lbl .val { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      NOCursorPilot · Live State
+    </div>
+    <div class="meta">
+      <span>BUF <b>0</b></span>
+      <span>RATE <b>10 Hz</b></span>
+      <div class="seg" id="winSeg">
+        <button data-win="100" class="on">10s</button>
+        <button data-win="300">30s</button>
+        <button data-win="600">60s</button>
+      </div>
+      <div class="zoom">
+        <span>ZOOM</span>
+        <input id="heightSlider" type="range" min="60" max="400" value="84" step="4">
+        <b id="heightLbl">84</b>
+      </div>
+      <div class="seg" id="pauseSeg">
+        <button id="pauseBtn">PAUSE</button>
+      </div>
+      <span class="sep"></span>
+      <span>LINK <b id="link">— —</b></span>
+      <span>T+<b id="uptime">000:00</b></span>
+    </div>
+  </header>
+
+  <main class="grid">
+
+    <!-- ───── LEFT: stacked time-series ───── -->
+    <section class="charts">
+
+      <div class="ch" data-ch="pitch">
+        <div class="lbl">
+          <div class="name">Pitch</div>
+          <div class="val"><span id="pitchV">+0.00</span></div>
+          <div class="rng">±1.0 · control input</div>
+        </div>
+        <div class="plot">
+          <svg viewBox="0 0 800 100" preserveAspectRatio="none">
+            <g class="gridlines">
+              <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid-strong)" stroke-width="1" stroke-dasharray="2 3"/>
+              <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
+              <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            </g>
+            <path id="pitchPath" d="" fill="none" stroke="var(--ink)" stroke-width="1.4" vector-effect="non-scaling-stroke"
+                  style="filter: drop-shadow(0 0 3px rgba(108,255,154,0.55));"/>
+            <path id="pitchFill" d="" fill="rgba(108,255,154,0.08)" stroke="none"/>
+            <circle id="pitchDot" cx="800" cy="50" r="2.5" fill="var(--ink)" style="filter: drop-shadow(0 0 4px var(--ink));"/>
+          </svg>
+          <div class="yaxis"><span>+1</span><span>0</span><span>−1</span></div>
+        </div>
+      </div>
+
+      <div class="ch cyan" data-ch="yaw">
+        <div class="lbl">
+          <div class="name">Yaw</div>
+          <div class="val"><span id="yawV">+0.00</span></div>
+          <div class="rng">±1.0 · control input</div>
+        </div>
+        <div class="plot">
+          <svg viewBox="0 0 800 100" preserveAspectRatio="none">
+            <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid-strong)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
+            <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="yawPath" d="" fill="none" stroke="var(--cyan)" stroke-width="1.4" vector-effect="non-scaling-stroke"
+                  style="filter: drop-shadow(0 0 3px rgba(95,217,255,0.55));"/>
+            <path id="yawFill" d="" fill="rgba(95,217,255,0.08)" stroke="none"/>
+            <circle id="yawDot" cx="800" cy="50" r="2.5" fill="var(--cyan)" style="filter: drop-shadow(0 0 4px var(--cyan));"/>
+          </svg>
+          <div class="yaxis"><span>+1</span><span>0</span><span>−1</span></div>
+        </div>
+      </div>
+
+      <div class="ch" data-ch="roll">
+        <div class="lbl">
+          <div class="name">Roll</div>
+          <div class="val"><span id="rollV">+0.00</span></div>
+          <div class="rng">±1.0 · control input</div>
+        </div>
+        <div class="plot">
+          <svg viewBox="0 0 800 100" preserveAspectRatio="none">
+            <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid-strong)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
+            <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="rollPath" d="" fill="none" stroke="var(--ink)" stroke-width="1.4" vector-effect="non-scaling-stroke"
+                  style="filter: drop-shadow(0 0 3px rgba(108,255,154,0.55));"/>
+            <path id="rollFill" d="" fill="rgba(108,255,154,0.08)" stroke="none"/>
+            <circle id="rollDot" cx="800" cy="50" r="2.5" fill="var(--ink)" style="filter: drop-shadow(0 0 4px var(--ink));"/>
+          </svg>
+          <div class="yaxis"><span>+1</span><span>0</span><span>−1</span></div>
+        </div>
+      </div>
+
+      <div class="ch amber" data-ch="speed">
+        <div class="lbl">
+          <div class="name">Speed</div>
+          <div class="val"><span id="speedV">000.0</span><small>m/s</small></div>
+          <div class="rng">0 – 350 m/s</div>
+        </div>
+        <div class="plot">
+          <svg viewBox="0 0 800 100" preserveAspectRatio="none">
+            <line x1="0" y1="100" x2="800" y2="100" stroke="var(--grid-strong)" stroke-width="1"/>
+            <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
+            <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="speedFill" d="" fill="rgba(255,180,84,0.10)" stroke="none"/>
+            <path id="speedPath" d="" fill="none" stroke="var(--amber)" stroke-width="1.4" vector-effect="non-scaling-stroke"
+                  style="filter: drop-shadow(0 0 3px rgba(255,180,84,0.55));"/>
+            <circle id="speedDot" cx="800" cy="100" r="2.5" fill="var(--amber)" style="filter: drop-shadow(0 0 4px var(--amber));"/>
+          </svg>
+          <div class="yaxis"><span>350</span><span>175</span><span>0</span></div>
+        </div>
+      </div>
+
+      <div class="ch cyan" data-ch="alt">
+        <div class="lbl">
+          <div class="name">Altitude</div>
+          <div class="val"><span id="altV">0000</span><small>m</small></div>
+          <div class="rng">0 – 6000 m</div>
+        </div>
+        <div class="plot">
+          <svg viewBox="0 0 800 100" preserveAspectRatio="none">
+            <line x1="0" y1="100" x2="800" y2="100" stroke="var(--grid-strong)" stroke-width="1"/>
+            <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
+            <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="altFill" d="" fill="rgba(95,217,255,0.10)" stroke="none"/>
+            <path id="altPath" d="" fill="none" stroke="var(--cyan)" stroke-width="1.4" vector-effect="non-scaling-stroke"
+                  style="filter: drop-shadow(0 0 3px rgba(95,217,255,0.55));"/>
+            <circle id="altDot" cx="800" cy="100" r="2.5" fill="var(--cyan)" style="filter: drop-shadow(0 0 4px var(--cyan));"/>
+          </svg>
+          <div class="yaxis"><span>6000</span><span>3000</span><span>0</span></div>
+        </div>
+      </div>
+
+      <div class="ch rose" data-ch="heading">
+        <div class="lbl">
+          <div class="name">Heading</div>
+          <div class="val"><span id="headingV">000</span><small>°</small></div>
+          <div class="rng">0–360° · plane / <span style="opacity:0.7">cam</span> / <span style="opacity:0.55">vel</span></div>
+        </div>
+        <div class="plot">
+          <svg viewBox="0 0 800 100" preserveAspectRatio="none">
+            <line x1="0" y1="100" x2="800" y2="100" stroke="var(--grid-strong)" stroke-width="1"/>
+            <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
+            <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="velHeadingPath" d="" fill="none" stroke="#cfeedd" stroke-width="1.0" stroke-dasharray="2 4" opacity="0.55" vector-effect="non-scaling-stroke"/>
+            <path id="camHeadingPath" d="" fill="none" stroke="var(--rose)" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.65" vector-effect="non-scaling-stroke"/>
+            <path id="headingPath" d="" fill="none" stroke="var(--rose)" stroke-width="1.4" vector-effect="non-scaling-stroke"
+                  style="filter: drop-shadow(0 0 3px rgba(255,122,154,0.55));"/>
+            <path id="headingFill" d="" fill="rgba(255,122,154,0.08)" stroke="none"/>
+            <circle id="headingDot" cx="800" cy="100" r="2.5" fill="var(--rose)" style="filter: drop-shadow(0 0 4px var(--rose));"/>
+          </svg>
+          <div class="yaxis"><span>360</span><span>180</span><span>0</span></div>
+        </div>
+      </div>
+
+      <div class="ch amber" data-ch="incline">
+        <div class="lbl">
+          <div class="name">Incline</div>
+          <div class="val"><span id="inclineV">+00.0</span><small>°</small></div>
+          <div class="rng">±90° · plane / <span style="opacity:0.7">cam</span> / <span style="opacity:0.55">vel</span></div>
+        </div>
+        <div class="plot">
+          <svg viewBox="0 0 800 100" preserveAspectRatio="none">
+            <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid-strong)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
+            <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="velInclinePath" d="" fill="none" stroke="#cfeedd" stroke-width="1.0" stroke-dasharray="2 4" opacity="0.55" vector-effect="non-scaling-stroke"/>
+            <path id="camInclinePath" d="" fill="none" stroke="var(--amber)" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.65" vector-effect="non-scaling-stroke"/>
+            <path id="inclinePath" d="" fill="none" stroke="var(--amber)" stroke-width="1.4" vector-effect="non-scaling-stroke"
+                  style="filter: drop-shadow(0 0 3px rgba(255,180,84,0.55));"/>
+            <path id="inclineFill" d="" fill="rgba(255,180,84,0.08)" stroke="none"/>
+            <circle id="inclineDot" cx="800" cy="50" r="2.5" fill="var(--amber)" style="filter: drop-shadow(0 0 4px var(--amber));"/>
+          </svg>
+          <div class="yaxis"><span>+90</span><span>0</span><span>−90</span></div>
+        </div>
+      </div>
+
+      <div class="ch violet" data-ch="bank">
+        <div class="lbl">
+          <div class="name">Bank</div>
+          <div class="val"><span id="bankV">+00.0</span><small>°</small></div>
+          <div class="rng">±90° · wing tilt</div>
+        </div>
+        <div class="plot">
+          <svg viewBox="0 0 800 100" preserveAspectRatio="none">
+            <line x1="0" y1="50" x2="800" y2="50" stroke="var(--grid-strong)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="25" x2="800" y2="25" stroke="var(--grid)" stroke-width="1"/>
+            <line x1="0" y1="75" x2="800" y2="75" stroke="var(--grid)" stroke-width="1"/>
+            <path id="bankPath" d="" fill="none" stroke="var(--violet)" stroke-width="1.4" vector-effect="non-scaling-stroke"
+                  style="filter: drop-shadow(0 0 3px rgba(180,140,255,0.55));"/>
+            <path id="bankFill" d="" fill="rgba(180,140,255,0.08)" stroke="none"/>
+            <circle id="bankDot" cx="800" cy="50" r="2.5" fill="var(--violet)" style="filter: drop-shadow(0 0 4px var(--violet));"/>
+          </svg>
+          <div class="yaxis"><span>+90</span><span>0</span><span>−90</span></div>
+        </div>
+      </div>
+
+      <!-- shared x axis -->
+      <div style="display:grid; grid-template-columns:110px 1fr; gap:16px; padding-top:6px;">
+        <div></div>
+        <div style="display:flex; justify-content:space-between; font-size:9px; letter-spacing:0.12em; color: var(--ink-dim);">
+          <span id="xMin">−10s</span>
+          <span>−7.5s</span>
+          <span>−5s</span>
+          <span>−2.5s</span>
+          <span>NOW</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───── RIGHT: side panel ───── -->
+    <aside class="side">
+      <div class="panel-h">
+        <span>Snapshot</span>
+        <span class="hint">last sample</span>
+      </div>
+      <div class="bignums">
+        <div>
+          <div class="k">Speed</div>
+          <div class="v amber"><span id="speedBig">000</span><small>m/s</small></div>
+        </div>
+        <div>
+          <div class="k">Altitude</div>
+          <div class="v cyan"><span id="altBig">0000</span><small>m</small></div>
+        </div>
+        <div>
+          <div class="k">Heading</div>
+          <div class="v"><span id="hdgBig">000</span><small>°</small></div>
+        </div>
+        <div>
+          <div class="k">G-load</div>
+          <div class="v"><span id="gBig">+1.00</span><small>g</small></div>
+        </div>
+      </div>
+
+      <div class="panel-h log-h">
+        <span>Event Log</span>
+        <span class="hint" id="logCount">0 evt</span>
+      </div>
+      <div class="log" id="log"></div>
+    </aside>
+
+  </main>
+
+  <footer class="footer">
+    <span>SRC /data · POLL 100ms · BUF push → 0</span>
+    <div class="right">
+      <span id="samples">0 samples</span>
+      <span id="lastUpdate">— last —</span>
+      <span>NO-TELEMETRY · v0.2</span>
+    </div>
+  </footer>
+</div>
+
+<div class="scan"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+
+  // ───── ring buffer per channel ─────
+  const CAPACITY = 600; // 60s at 10Hz
+  let WINDOW = 100;     // visible samples (default 10s)
+  const buf = {
+    pitch: [], yaw: [], roll: [], speed: [], alt: [], heading: [], incline: [], bank: [],
+    camHeading: [], camIncline: [], velHeading: [], velIncline: []
+  };
+
+  function push(ch, v) {
+    const arr = buf[ch];
+    arr.push(v);
+    if (arr.length > CAPACITY) arr.shift();
+  }
+
+  // ───── path builder ─────
+  // signed: midline at 50, value mapped ±50 across ±range
+  // pos: baseline at 100, value mapped to 0..100 across 0..range
+  function buildPath(arr, range, signed) {
+    if (!arr.length) return { line: '', fill: '' };
+    const n = Math.min(arr.length, WINDOW);
+    const slice = arr.slice(-n);
+    const W = 800;
+    const xStep = W / (WINDOW - 1);
+    const startX = W - (n - 1) * xStep; // right-aligned (NOW = right edge)
+
+    let line = '';
+    let fillBottom = signed ? 50 : 100;
+    for (let i = 0; i < n; i++) {
+      const v = slice[i];
+      const x = startX + i * xStep;
+      let y;
+      if (signed) {
+        y = 50 - (Math.max(-range, Math.min(range, v)) / range) * 50;
+      } else {
+        y = 100 - (Math.max(0, Math.min(range, v)) / range) * 100;
+      }
+      line += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
+    }
+    // fill closes to baseline
+    const lastX = startX + (n-1) * xStep;
+    const firstX = startX;
+    const fill = line + `L${lastX.toFixed(2)} ${fillBottom} L${firstX.toFixed(2)} ${fillBottom} Z`;
+    return { line, fill, lastX, lastY: parseFloat(line.trim().split(' ').slice(-1)[0]) };
+  }
+
+  function lastY(arr, range, signed) {
+    const v = arr[arr.length-1] || 0;
+    if (signed) return 50 - (Math.max(-range, Math.min(range, v)) / range) * 50;
+    return 100 - (Math.max(0, Math.min(range, v)) / range) * 100;
+  }
+
+  // ───── render ─────
+  function renderChart(ch, range, signed, lineId, fillId, dotId) {
+    const { line, fill } = buildPath(buf[ch], range, signed);
+    $(lineId).setAttribute('d', line);
+    $(fillId).setAttribute('d', fill);
+    const y = lastY(buf[ch], range, signed);
+    $(dotId).setAttribute('cy', y);
+    // dot x is at the right edge — we right-align so it stays at NOW
+    $(dotId).setAttribute('cx', 800);
+  }
+
+  // Line-only render (no fill, no dot). Used for camera overlay on heading/incline.
+  function renderLine(ch, range, signed, lineId) {
+    const { line } = buildPath(buf[ch], range, signed);
+    $(lineId).setAttribute('d', line);
+  }
+
+  function renderXY() {
+    if (!document.getElementById('xyTrail')) return; // XY scatter removed
+    // map roll (±90 visible window) to x (±100), pitch (±45) to y (-50..50, flipped)
+    const N = Math.min(100, buf.roll.length);
+    const rSlice = buf.roll.slice(-N);
+    const pSlice = buf.pitch.slice(-N);
+    let d = '';
+    for (let i = 0; i < N; i++) {
+      const x = Math.max(-90, Math.min(90, rSlice[i])) / 90 * 95;
+      const y = -Math.max(-45, Math.min(45, pSlice[i])) / 45 * 45;
+      d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+    }
+    $('xyTrail').setAttribute('d', d);
+    if (N) {
+      const lx = Math.max(-90, Math.min(90, rSlice[N-1])) / 90 * 95;
+      const ly = -Math.max(-45, Math.min(45, pSlice[N-1])) / 45 * 45;
+      $('xyDot').setAttribute('cx', lx);
+      $('xyDot').setAttribute('cy', ly);
+    }
+  }
+
+  const fmtSigned = (v, w=1) => (v>=0?'+':'') + v.toFixed(w);
+
+  function renderAll(d) {
+    // Top 3 channels = control inputs the mod is writing to ControlInputs (-1..1).
+    // Heading: convert -180..180 from atan2 → 0..360 compass-style for display.
+    const hdg360    = ((d.heading    % 360) + 360) % 360;
+    const camHdg360 = ((d.camHeading % 360) + 360) % 360;
+    const velHdg360 = ((d.velHeading % 360) + 360) % 360;
+
+    push('pitch',      d.ctrlPitch);
+    push('yaw',        d.ctrlYaw);
+    push('roll',       d.ctrlRoll);
+    push('speed',      d.speed);
+    push('alt',        d.alt);
+    push('heading',    hdg360);
+    push('incline',    d.incline);
+    push('bank',       d.wingAngle);
+    push('camHeading', camHdg360);
+    push('camIncline', d.camIncline);
+    push('velHeading', velHdg360);
+    push('velIncline', d.velIncline);
+
+    renderChart('pitch',   1,    true,  'pitchPath',   'pitchFill',   'pitchDot');
+    renderChart('yaw',     1,    true,  'yawPath',     'yawFill',     'yawDot');
+    renderChart('roll',    1,    true,  'rollPath',    'rollFill',    'rollDot');
+    renderChart('speed',   350,  false, 'speedPath',   'speedFill',   'speedDot');
+    renderChart('alt',     6000, false, 'altPath',     'altFill',     'altDot');
+    renderChart('heading', 360,  false, 'headingPath', 'headingFill', 'headingDot');
+    renderChart('incline', 90,   true,  'inclinePath', 'inclineFill', 'inclineDot');
+    renderChart('bank',    90,   true,  'bankPath',    'bankFill',    'bankDot');
+    // dashed overlay = camera direction (cursor-pilot target). Line only — no fill/dot.
+    renderLine('camHeading', 360, false, 'camHeadingPath');
+    renderLine('camIncline', 90,  true,  'camInclinePath');
+    // white dashed = velocity vector direction (flight path).
+    renderLine('velHeading', 360, false, 'velHeadingPath');
+    renderLine('velIncline', 90,  true,  'velInclinePath');
+
+    renderXY();
+
+    // numeric readouts
+    $('pitchV').textContent   = fmtSigned(d.ctrlPitch, 2);
+    $('yawV').textContent     = fmtSigned(d.ctrlYaw,   2);
+    $('rollV').textContent    = fmtSigned(d.ctrlRoll,  2);
+    $('speedV').textContent   = d.speed.toFixed(1);
+    $('altV').textContent     = Math.round(d.alt).toString().padStart(4,'0');
+    $('headingV').textContent = Math.round(hdg360).toString().padStart(3,'0');
+    $('inclineV').textContent = fmtSigned(d.incline, 1);
+    $('bankV').textContent    = fmtSigned(d.wingAngle, 1);
+
+    // side bignums
+    $('speedBig').textContent = Math.round(d.speed).toString().padStart(3,'0');
+    $('altBig').textContent   = Math.round(d.alt).toString().padStart(4,'0');
+    $('hdgBig').textContent = Math.round(hdg360).toString().padStart(3,'0');
+
+    // g-load proxy from incline (vertical-component approx). Roll absent now → drop roll factor.
+    const gApprox = 1 + Math.sin(d.incline*Math.PI/180) * 0.6;
+    $('gBig').textContent = fmtSigned(gApprox, 2);
+
+    $('samples').textContent = buf.pitch.length + ' samples';
+    $('lastUpdate').textContent = 'LAST ' + new Date().toLocaleTimeString('en-GB');
+  }
+
+  // ───── window segmented control ─────
+  document.getElementById('winSeg').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    document.querySelectorAll('#winSeg button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    WINDOW = parseInt(b.dataset.win, 10);
+    const secs = WINDOW / 10;
+    $('xMin').textContent = '−' + secs + 's';
+    document.querySelectorAll('.charts .ch .lbl ~ * + *').forEach(()=>{}); // noop
+    // tick labels: -W, -W*0.75, -W*0.5, -W*0.25, NOW
+    const tickRow = document.querySelector('.charts > div:last-child > div:last-child');
+    const labels = [`−${secs}s`, `−${(secs*0.75).toFixed(secs<10?1:0)}s`, `−${(secs/2).toFixed(secs<10?1:0)}s`, `−${(secs/4).toFixed(secs<10?1:0)}s`, 'NOW'];
+    tickRow.innerHTML = labels.map(l => `<span>${l}</span>`).join('');
+    // re-render with new window (paths only, no push).
+    if (buf.pitch.length) {
+      renderChart('pitch',   1,    true,  'pitchPath',   'pitchFill',   'pitchDot');
+      renderChart('yaw',     1,    true,  'yawPath',     'yawFill',     'yawDot');
+      renderChart('roll',    1,    true,  'rollPath',    'rollFill',    'rollDot');
+      renderChart('speed',   350,  false, 'speedPath',   'speedFill',   'speedDot');
+      renderChart('alt',     6000, false, 'altPath',     'altFill',     'altDot');
+      renderChart('heading', 360,  false, 'headingPath', 'headingFill', 'headingDot');
+      renderChart('incline', 90,   true,  'inclinePath', 'inclineFill', 'inclineDot');
+      renderChart('bank',    90,   true,  'bankPath',    'bankFill',    'bankDot');
+      renderLine('camHeading', 360, false, 'camHeadingPath');
+      renderLine('camIncline', 90,  true,  'camInclinePath');
+      renderLine('velHeading', 360, false, 'velHeadingPath');
+      renderLine('velIncline', 90,  true,  'velInclinePath');
+    }
+  });
+
+  // ───── event log ─────
+  const logEl = $('log');
+  let logCount = 0;
+  function logLine(msg, kind='') {
+    logCount++;
+    $('logCount').textContent = logCount + ' evt';
+    const t = new Date().toLocaleTimeString('en-GB');
+    const div = document.createElement('div');
+    div.className = 'l' + (kind ? ' '+kind : '');
+    div.innerHTML = `${t} <b>${msg}</b>`;
+    logEl.prepend(div);
+    while (logEl.children.length > 10) logEl.removeChild(logEl.lastChild);
+  }
+
+  // detect threshold crossings for log
+  let last = { incline: 0, ctrlPitch: 0, ctrlRoll: 0, ctrlYaw: 0, speed: 0, alt: 0 };
+  function checkEvents(d) {
+    if (Math.abs(d.incline) > 60 && Math.abs(last.incline) <= 60)
+      logLine(`incline ${fmtSigned(d.incline,0)}° — high`, 'warn');
+    if (Math.abs(d.ctrlRoll) >= 0.95 && Math.abs(last.ctrlRoll) < 0.95)
+      logLine(`roll input saturated`, 'warn');
+    if (Math.abs(d.ctrlPitch) >= 0.95 && Math.abs(last.ctrlPitch) < 0.95)
+      logLine(`pitch input saturated`, 'warn');
+    if (d.speed > 300 && last.speed <= 300) logLine(`speed > 300 m/s`, 'warn');
+    if (d.alt > 5000 && last.alt <= 5000)   logLine(`alt > 5000 m`, '');
+    if (d.alt < 100 && last.alt >= 100)     logLine(`alt < 100 m — low`, 'warn');
+    last = d;
+  }
+
+  // ───── uptime ─────
+  const t0 = Date.now();
+  setInterval(() => {
+    const s = Math.floor((Date.now()-t0)/1000);
+    const m = Math.floor(s/60);
+    $('uptime').textContent =
+      String(Math.floor(m/60)).padStart(3,'0')+':'+String(m%60).padStart(2,'0');
+  }, 500);
+
+  // ───── height (zoom) slider ─────
+  const heightSlider = $('heightSlider');
+  function applyHeight(px) {
+    document.querySelectorAll('.plot').forEach(p => p.style.height = px + 'px');
+    $('heightLbl').textContent = px;
+  }
+  heightSlider.addEventListener('input', () => applyHeight(parseInt(heightSlider.value, 10)));
+
+  // ───── pause toggle ─────
+  let paused = false;
+  $('pauseBtn').addEventListener('click', () => {
+    paused = !paused;
+    $('pauseBtn').textContent = paused ? 'RESUME' : 'PAUSE';
+    $('pauseBtn').classList.toggle('on', paused);
+    logLine(paused ? 'frozen' : 'resumed', '');
+  });
+  // spacebar shortcut
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+      e.preventDefault();
+      $('pauseBtn').click();
+    }
+  });
+
+  // ───── tick (real data only — no simulation) ─────
+  let everConnected = false;
+  async function tick() {
+    try {
+      const r = await fetch('/data', { cache: 'no-store' });
+      if (!r.ok) throw new Error('bad');
+      let d = await r.json();
+      d = {
+        ctrlPitch:  Number(d.ctrlPitch)||0,
+        ctrlYaw:    Number(d.ctrlYaw)||0,
+        ctrlRoll:   Number(d.ctrlRoll)||0,
+        speed:      Number(d.speed)||0,
+        alt:        Number(d.alt)||0,
+        heading:    Number(d.heading)||0,
+        incline:    Number(d.incline)||0,
+        camHeading: Number(d.camHeading)||0,
+        camIncline: Number(d.camIncline)||0,
+        velHeading: Number(d.velHeading)||0,
+        velIncline: Number(d.velIncline)||0,
+        wingAngle:  Number(d.wingAngle)||0
+      };
+      if (!everConnected) {
+        logLine('telemetry stream connected');
+        everConnected = true;
+      }
+      $('link').textContent = paused ? 'PAUSED' : 'OK';
+      if (!paused) {
+        renderAll(d);
+        checkEvents(d);
+      }
+    } catch (e) {
+      $('link').textContent = everConnected ? 'LOST' : 'NO DATA';
+      // do not render — keep last good frame (or stay empty if never connected)
+    }
+  }
+  // seed with one event
+  logLine('panel armed · polling /data', '');
+  setInterval(tick, 100);
+  tick();
+</script>
+
+</body>
+</html>

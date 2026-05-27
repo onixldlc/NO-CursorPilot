@@ -21,7 +21,7 @@ namespace NOCursorPilot.Controller
         private bool initialized;
         private float smoothedPitch, smoothedRoll, smoothedYaw;
 
-        protected override void Engage(Aircraft aircraft, ControlInputs inputs)
+        public override void Run(Aircraft aircraft, ControlInputs inputs)
         {
             CameraStateManager camMgr = SceneSingleton<CameraStateManager>.i;
             if (camMgr == null) return;

@@ -27,6 +27,7 @@ namespace NOCursorPilot
             public string camMode;
             public string gate;
             public float iPitch, iYaw, iRoll;
+            public float iLevelPitch, iLevelRoll;
         }
 
         private const int CAP = 60;
@@ -75,7 +76,8 @@ namespace NOCursorPilot
                     $"  STICK    pitch={s.stickPitch:+0.000;-0.000} roll={s.stickRoll:+0.000;-0.000} yaw={s.stickYaw:+0.000;-0.000}\n" +
                     $"  localTgt =({s.localTarget.x:F3},{s.localTarget.y:F3},{s.localTarget.z:F3})  angleOff={s.angleOff:F1}deg  fade={s.fade:F2}\n" +
                     $"  WRITTEN  pitch={s.outPitch:+0.000;-0.000} roll={s.outRoll:+0.000;-0.000} yaw={s.outYaw:+0.000;-0.000}\n" +
-                    $"  PID-I    pitch={s.iPitch:+0.000;-0.000} roll={s.iRoll:+0.000;-0.000} yaw={s.iYaw:+0.000;-0.000}"
+                    $"  303COEFF pitch={s.iPitch:F3} roll={s.iRoll:F3} yaw={s.iYaw:F3}\n" +
+                    $"  LVL-I    pitch={s.iLevelPitch:+0.000;-0.000} roll={s.iLevelRoll:+0.000;-0.000}"
                 );
             }
 

@@ -33,6 +33,7 @@ namespace NOCursorPilot
         private static float _ctrlPitch, _ctrlYaw, _ctrlRoll;  // -1..1, what mod writes to ControlInputs
         private static float _speed, _alt;
         private static float _heading, _incline;               // plane attitude (degrees)
+        private static float _wingAngle;                       // bank angle (degrees, -90..90, +ve = right wing down)
         private static float _camHeading, _camIncline;         // cursor-pilot target direction (degrees)
         private static float _velHeading, _velIncline;         // velocity vector direction (degrees)
         private static bool  _camValid;
@@ -49,6 +50,9 @@ namespace NOCursorPilot
 
             _heading = Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg;                       // -180..180
             _incline = Mathf.Asin(Mathf.Clamp(fwd.y, -1f, 1f)) * Mathf.Rad2Deg;          // -90..90
+            // Bank angle: -asin(right.y). +ve = right wing tilted down (right bank), -ve = left bank.
+            // Range -90..90. Wings level -> 0.
+            _wingAngle = -Mathf.Asin(Mathf.Clamp(t.right.y, -1f, 1f)) * Mathf.Rad2Deg;
             _speed   = aircraft.speed;
             _alt     = aircraft.radarAlt;
 
@@ -154,7 +158,8 @@ namespace NOCursorPilot
                                   ",\"camHeading\":" + F(ch) +
                                   ",\"camIncline\":" + F(ci) +
                                   ",\"velHeading\":" + F(_velHeading) +
-                                  ",\"velIncline\":" + F(_velIncline) + "}";
+                                  ",\"velIncline\":" + F(_velIncline) +
+                                  ",\"wingAngle\":"  + F(_wingAngle) + "}";
                     Send(ctx, "application/json", json);
                     return;
                 }
